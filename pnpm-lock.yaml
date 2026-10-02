@@ -60,6 +60,9 @@ importers:
         specifier: ^4.6.5
         version: 4.6.5
     devDependencies:
+      '@agent-graphs/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
       '@types/better-sqlite3':
         specifier: ^9.6.0
         version: 9.6.0

@@ -29,6 +29,7 @@
   "devDependencies": {
     "@types/better-sqlite3": "^9.6.0",
     "drizzle-kit": "^0.31.11",
-    "tsx": "^4.23.15"
+    "tsx": "^4.23.15",
+    "@agent-graphs/sdk": "workspace:*"
   }
 }
