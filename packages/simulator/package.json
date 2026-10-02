@@ -14,6 +14,10 @@
   "dependencies": {
     "@agent-graphs/core": "workspace:*",
     "@agent-graphs/sdk": "workspace:*",
-    "yaml": "^2.9.1"
+    "yaml": "^2.9.1",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@agent-graphs/server": "workspace:*"
   }
 }

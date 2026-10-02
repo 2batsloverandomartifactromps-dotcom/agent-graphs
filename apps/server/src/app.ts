@@ -1,5 +1,8 @@
 import { createHash } from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { EngineError, SPEC_SCHEMA } from '@agent-graphs/core';
+import { serveStatic } from '@hono/node-server/serve-static';
 import { and, eq } from 'drizzle-orm';
 import { Hono, type MiddlewareHandler } from 'hono';
 import { cors } from 'hono/cors';
@@ -9,10 +12,12 @@ import { type Config, loadConfig } from './config';
 import { type AppContext, createContext } from './context';
 import { idempotencyKeys } from './db/schema';
 import { createDb } from './db/sqlite';
+import { mcpHandler } from './mcp';
 import { attemptRoutes } from './routes/attempts';
 import { Api } from './routes/define';
 import { graphRoutes } from './routes/graphs';
 import { inboxRoutes } from './routes/inbox';
+import { lessonRoutes } from './routes/lessons';
 import { metaRoutes } from './routes/meta';
 import { nodeRoutes } from './routes/nodes';
 import { structureRoutes } from './routes/structure';
@@ -60,7 +65,10 @@ export function createApp(
   structureRoutes(api, ctx);
   inboxRoutes(api, ctx);
   metaRoutes(api, ctx, { version: VERSION });
+  lessonRoutes(api, ctx);
+  serveWeb(app, ctx.config.webDir);
 
+  app.all('/mcp', mcpHandler(app));
   app.notFound((c) =>
     c.json(
       {
@@ -150,4 +158,19 @@ function idempotency(ctx: AppContext): MiddlewareHandler<Env> {
         .run();
     }
   };
+}
+
+/** Serve the built web app (apps/web/dist) with an SPA fallback for client-side routes. */
+function serveWeb(app: Hono<Env>, webDir: string | undefined): void {
+  if (!webDir || !existsSync(join(webDir, 'index.html'))) return;
+  const index = readFileSync(join(webDir, 'index.html'), 'utf8');
+  app.use('/assets/*', serveStatic({ root: webDir }));
+  app.get('*', async (c, next) => {
+    if (c.req.path.startsWith('/api/') || c.req.path === '/mcp' || c.req.path === '/health')
+      return next();
+    const file = join(webDir, c.req.path);
+    if (c.req.path !== '/' && existsSync(file) && !file.endsWith('/'))
+      return serveStatic({ root: webDir })(c, next);
+    return c.html(index);
+  });
 }

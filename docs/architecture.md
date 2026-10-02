@@ -201,13 +201,23 @@ SSE clients, events/s). OpenTelemetry is optional, later.
 
 - `@agent-graphs/mcp` defines tools against an `AgentGraphsClient` interface (implemented by the
   sdk over HTTP). The **stdio** entry (`agraph mcp`) is what Claude Code spawns. The server
-  mounts the same tools at `/mcp` (Streamable HTTP via `@hono/mcp`) using a loopback client.
+  mounts the same tools at `/mcp` (Streamable HTTP, stateful MCP sessions, JSON responses) with
+  an in-process loopback client: an sdk client whose `fetch` is `app.request`, forwarding the
+  caller's bearer token so auth applies exactly as over REST. The transport is the MCP SDK's
+  web-standard `WebStandardStreamableHTTPServerTransport` (`Request → Response`), which keeps
+  the HTTP handler in `@agent-graphs/mcp` with no Hono coupling; `@hono/mcp` was not needed.
+  `@agent-graphs/mcp/testing` exports in-memory, HTTP, and stdio MCP clients for tests.
 - Tool input schemas reuse the core zod schemas. Results return concise markdown plus
   `structuredContent`.
 - `agraph` uses commander. Client commands use the sdk. `serve` starts the server and serves the
   bundled UI. `hook` subcommands read the Claude Code hook JSON from stdin, must finish in under
   100 ms when throttled, and never throw (they fail open, except `stop` under the `block`
-  policy).
+  policy). The throttle check runs in the plain-JS launcher (`bin/agraph.js`) before tsx loads.
+  Commands run in-process for tests (`runCli(argv, io)` with an injected fetch).
+- The simulator (`@agent-graphs/simulator`) depends only on the sdk and core at runtime. Its
+  scenario runner takes a `SimHost` (API origin, fetch, fake clock, `advance`); the tests build
+  one from `createApp({ now })` and `sweepOnce`, so `@agent-graphs/server` is only a dev
+  dependency and there is no dependency cycle.
 
 ## 6. Security
 

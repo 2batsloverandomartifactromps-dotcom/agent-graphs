@@ -18,6 +18,7 @@ import { type AppContext, command, readGraph } from '../context';
 import { nodeDetail, nodeSummary } from '../read/views';
 import { annotationOf, getSession, sessionForActor } from '../sessions';
 import type { Api } from './define';
+import { recordLessonApplications } from './lessons';
 import { briefingFor, briefingOut, nodeOf, notesFor, respond } from './util';
 
 const HEARTBEAT_EVERY = 300;
@@ -104,6 +105,7 @@ export function claimFor(
   };
   if (body.briefing) {
     const b = briefingFor(app, out.state, fresh, attempt, body.briefing);
+    recordLessonApplications(app, attempt.id, b.lessonIds);
     result.briefing = briefingOut(b, body.briefing.format);
   }
   return result;

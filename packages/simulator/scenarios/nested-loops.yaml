@@ -1,0 +1,24 @@
+name: nested loops (inner test-fix cycle inside an outer release cycle)
+description: >
+  api-tests fails twice (the inner api-fix loop iterates to 3/4), then the human rejects the
+  release review, which resets everything from design onward and gives the inner loop a fresh
+  budget. In the second outer iteration api-tests fails once more, then everything passes.
+specFile: ../../../examples/graphs/nested-loops.yaml
+agents:
+  workers: [{ profile: reliable-worker, count: 2 }]
+  judges: [{ profile: judge, strictness: 0 }]
+  human: { delayMinutes: 1 }
+outcomes:
+  api-tests: [fail, fail, pass, fail, pass]
+gates:
+  release-review: [reject, approve]
+expect:
+  graph: completed
+  nodes: { requirements: done, design: done, implement-api: done, api-tests: done, e2e: done, release-review: done, ship: done }
+  loops:
+    api-fix: { iteration: 2, status: satisfied }
+    release-cycle: { iteration: 2, status: satisfied }
+  events:
+    include: [loop.satisfied, attempt.superseded, graph.completed]
+    min: { loop.iterated: 4, attempt.failed: 3 }
+  requests: { gate: 2 }

@@ -1,0 +1,36 @@
+name: notes app MVP driven by a lead, a reviewer, and a human
+description: >
+  The full examples/graphs/notes-app.yaml: plan approval, a lead dispatching subagents on
+  behalf (maxParallel 3), an independent reviewer attached as the reviewer orchestrator, an
+  agent judge, human gates (one design rejection fires the design cycle), an api fix cycle,
+  a blocker, a question, realistic failures, guard aims, and graph verification.
+specFile: ../../../examples/graphs/notes-app.yaml
+seed: 7
+start: agent
+maxTicks: 1500
+agents:
+  lead:
+    orchestrator: lead
+    maxSubagents: 3
+    subagents: [reliable-worker]
+    maxRetries: 2
+    maxExtends: 1
+  judges:
+    - { profile: judge, strictness: 0, orchestrator: reviewer }
+  human: { delayMinutes: 4, maxRetries: 2, maxExtends: 1 }
+outcomes:
+  api-tests: [fail, pass]
+  security-audit: [block, pass]
+  docs: [question]
+gates:
+  design-review: [reject, approve]
+expect:
+  graph: completed
+  nodes: { mvp-ready: done, deploy: done, e2e-tests: done }
+  loops:
+    api-fix-cycle: { iteration: 2, status: satisfied }
+    design-cycle: { iteration: 2, status: satisfied }
+  events:
+    include: [graph.started, loop.iterated, attempt.blocked, graph.verifying, graph.completed]
+  requests: { plan: 1, gate: 4, blocker: 1, question: 1 }
+  stats: { dispatches: 15 }

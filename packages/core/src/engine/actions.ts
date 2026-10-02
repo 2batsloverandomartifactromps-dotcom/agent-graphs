@@ -283,10 +283,19 @@ export function failNodeAction(state: GraphState, tx: Tx, nodeId: string, reason
 export function retry(state: GraphState, tx: Tx, nodeId: string, extraAttempts: number): void {
   const node = state.nodes.get(nodeId) as Node;
   requireStatus(node, ['failed', 'needs_input'], 'retry');
-  if (node.kind !== 'task')
-    throw invalid(`Only tasks can be retried; '${node.key}' is a ${node.kind}.`);
   if (!Number.isInteger(extraAttempts) || extraAttempts < 1) {
     throw new EngineError('BAD_REQUEST', 'extraAttempts must be an integer ≥ 1.', undefined, 400);
+  }
+  if (node.kind !== 'task') {
+    // Gates and milestones have no attempts: a retry is a fresh decision in a new activation
+    // (a rejected gate gets a new approval request; a milestone is re-evaluated).
+    if (node.status !== 'failed') {
+      throw invalid(
+        `'${node.key}' is a ${node.kind} awaiting a decision; resolve its request instead.`,
+      );
+    }
+    newActivation(state, tx, node, 'retry granted');
+    return;
   }
   node.grantedAttempts += extraAttempts;
   tx.touch('node', node);

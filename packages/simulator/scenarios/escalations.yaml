@@ -1,0 +1,66 @@
+name: escalations resolved by a lead orchestrator
+description: >
+  A lead dispatches subagents on behalf. lint exhausts its attempts (exhaustion escalation):
+  the lead grants one retry, it fails again, and the lead accepts it with deviation. The test
+  loop exhausts too (loop escalation): the lead extends it by one iteration and the fix passes.
+  No human is involved: the escalations are assigned to anyone and the lead holds resolve.
+spec: |
+  schema: agent-graphs/v1
+  title: Escalations
+  slug: escalations
+  orchestrators:
+    - key: lead
+      name: Lead
+      role: lead
+      capabilities: [dispatch, resolve, mutate]
+  aims:
+    - key: all-done
+      title: All nodes complete
+      metric: nodes_done_ratio
+      source: derived
+      comparator: gte
+      target: 1
+  nodes:
+    - key: lint
+      title: Lint clean
+      aim: No lint errors
+      purpose: Keep the codebase tidy
+      prompt: Fix lint errors and report lint_errors.
+      maxAttempts: 2
+      aims:
+        - check: "lint_errors == 0"
+    - key: build
+      title: Build the service
+      aim: Service builds
+      purpose: Required for tests
+      prompt: Implement and build.
+      aims:
+        - check: "build_ok >= 1"
+    - key: test
+      title: Run the tests
+      aim: Tests pass
+      purpose: Proves the build
+      needs: [build]
+      prompt: Run the tests and report test_pass_rate.
+      aims:
+        - check: "test_pass_rate >= 1"
+  loops:
+    - key: fix-cycle
+      from: test
+      to: build
+      maxIterations: 2
+agents:
+  lead: { orchestrator: lead, maxSubagents: 2, maxRetries: 1, maxExtends: 1 }
+  human: false
+outcomes:
+  lint: [fail, fail, fail]
+  test: [fail, fail, pass]
+expect:
+  graph: completed
+  nodes: { lint: done, build: done, test: done }
+  loops:
+    fix-cycle: { iteration: 3, status: satisfied }
+  events:
+    include: [loop.exhausted, loop.extended, node.attempts_granted, orchestrator.attached]
+  requests: { exhaustion: 2, loop: 1 }
+  stats: { dispatches: 6 }

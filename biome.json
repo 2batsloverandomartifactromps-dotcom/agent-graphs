@@ -6,7 +6,15 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["**", "!**/dist", "!**/drizzle", "!docs/design", "!**/routeTree.gen.ts"]
+    "includes": [
+      "**",
+      "!**/dist",
+      "!**/drizzle",
+      "!docs/design",
+      "!**/routeTree.gen.ts",
+      "!.claude/worktrees",
+      "!**/dist-schema"
+    ]
   },
   "formatter": {
     "enabled": true,

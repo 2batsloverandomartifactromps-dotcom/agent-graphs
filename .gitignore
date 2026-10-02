@@ -3,7 +3,6 @@ node_modules/
 
 # build output
 dist/
-dist-schema/
 *.tsbuildinfo
 .vite/
 
@@ -28,3 +27,6 @@ test-results/
 .DS_Store
 .idea/
 *.swp
+
+# agent worktrees
+.claude/worktrees/

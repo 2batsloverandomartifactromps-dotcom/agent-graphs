@@ -187,6 +187,7 @@ proposals, M5; **(E3)** for template versions and eval suites, M6.
 | `GET /sessions?status=&graph=` | V | |
 | `PATCH /sessions/{id}` | G | For example the model changed mid-session. |
 | `POST /sessions/{id}/heartbeat` · `POST /sessions/by-client/{clientSessionId}/heartbeat` | G | Renews every lease held by the session **and its descendant sessions** (dispatched subagents). The `by-client` form is used by hooks. Returns `{ attempts: [{ id, nodeKey, leaseExpiresAt, newDirectives, pauseRequested, cancelRequested }] }`, so a hook can surface new directives as additional context. |
+| `GET /sessions/by-client/{clientSessionId}` | G | Read-only lookup for hooks: the session, the open attempts held by it and its descendants, and the orchestrator roles it holds. Unlike the heartbeat, it renews nothing. |
 | `POST /sessions/{id}/events` | G | Client lifecycle signals, for example `{ type: "compacted" }` from a PreCompact hook. |
 | `POST /sessions/{id}/end` | G | |
 
@@ -297,7 +298,7 @@ Idempotency-Key: 7f9c…
 
 ### Next
 ```json
-// POST /graphs/notes-mvp/next  { "actor": {…}, "capabilities": ["repo-write"], "claim": true }
+// POST /graphs/notes-mvp/next  { "actor": {…}, "skills": ["repo-write"], "claim": true }
 { "node": { "key": "docs", "title": "Write user docs", "priority": "p2", "reason": "highest priority ready node; unblocks mvp-ready" },
   "attempt": { "id": "at_…" }, "briefing": "…" }
 // or, when nothing is ready:

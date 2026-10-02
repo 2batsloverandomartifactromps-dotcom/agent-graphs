@@ -11,6 +11,8 @@ export type Config = {
   logLevel: string;
   corsOrigins: string[];
   leaseSweepIntervalMs: number;
+  /** Built web UI to serve at `/` (default apps/web/dist when present). */
+  webDir?: string;
 };
 
 const LOOPBACK = new Set(['127.0.0.1', 'localhost', '::1']);
@@ -44,6 +46,7 @@ export function loadConfig(
     corsOrigins:
       overrides.corsOrigins ??
       (env.CORS_ORIGINS ? env.CORS_ORIGINS.split(',').map((s) => s.trim()) : []),
+    webDir: overrides.webDir ?? env.WEB_DIR ?? resolve(import.meta.dirname, '../../web/dist'),
     leaseSweepIntervalMs:
       overrides.leaseSweepIntervalMs ??
       durationToSeconds((env.LEASE_SWEEP_INTERVAL ?? '30s') as `${number}s`) * 1000,

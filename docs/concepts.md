@@ -258,7 +258,7 @@ Notes:
 | `pause` | pending, ready, running, evaluating, needs_input, blocked | → `paused` (see Pausing) |
 | `resume` | paused | → running / evaluating / pending (see Pausing) |
 | `skip` (reason) | pending, ready, running, evaluating, needs_input, blocked, failed | → `skipped`; open attempt → `cancelled` |
-| `retry` (+N attempts) | failed, needs_input (exhaustion) | `granted_attempts += N` → `ready` |
+| `retry` (+N attempts) | failed, needs_input (exhaustion) | `granted_attempts += N` → `ready`. A failed gate or milestone instead starts a new activation (a rejected gate gets a fresh approval request). |
 | `fail` (reason) | ready, running, evaluating, needs_input, blocked | → `failed`; open attempt → `cancelled` |
 | `reopen` (admin) | done, skipped, failed | cascade reset (see above) |
 | `complete-manually` (admin) | pending (prerequisites satisfied), ready, needs_input, blocked, failed | → `done` (manual). Supplied verdicts on terminating aims must be `met`; the rest are waived. |

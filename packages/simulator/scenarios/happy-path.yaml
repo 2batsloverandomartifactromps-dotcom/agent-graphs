@@ -1,0 +1,16 @@
+name: happy path with an independent judge and a human gate
+description: >
+  Two reliable workers, an independent judge for the agent-evaluated aim, and a human who
+  approves the design gate and the human-judged graph aim. Everything completes.
+specFile: ../../../examples/graphs/minimal.yaml
+agents:
+  workers: [{ profile: reliable-worker, count: 2 }]
+  judges: [{ profile: judge, strictness: 0 }]
+  human: { delayMinutes: 2 }
+expect:
+  graph: completed
+  nodes: { implement: done, review: done }
+  events:
+    include: [graph.started, attempt.claimed, attempt.submitted, request.resolved, graph.completed]
+    exclude: [loop.iterated]
+  requests: { gate: 1, aim: 1 }
