@@ -284,7 +284,20 @@ it, create it as a draft). **MCP resources**: `agent-graphs://graphs/{id}/sitrep
 `agent-graphs://graphs/{id}/nodes/{key}/briefing`, and `agent-graphs://docs/protocol`.
 
 Tool results are concise markdown with ids and next-step hints, plus `structuredContent` that
-mirrors the REST response.
+mirrors the REST response. Errors are tool results with `isError: true` and the server's `code`
+and `hint`.
+
+**Input conventions.** Tools take the REST body fields (the core zod schemas) plus the ids the
+REST path would carry: `graph`, `node`, `attemptId`, `requestId` (alias `id`, as in duty-queue
+hints), `directiveId`, `orchestrator`. `graph_mutate` takes the batch fields directly, and the
+graph-level patch as `graphPatch` (because `graph` names the graph). The MCP server remembers the
+sessions it learns from claims and `orchestrator_attach`, and sends them as `X-Agent-Session` on
+capability calls (dispatch, mutate, resolve, directives, waivers), so agents never juggle session
+ids. Attempt-scoped calls never send a session, so notes and verdicts keep the attempt executor's
+annotation (a lead's server also serves its subagents' tool calls). The default actor is
+`AGENT_GRAPHS_ACTOR` with `mechanism: mcp` as a fallback, and `clientSessionId` is attached
+automatically (§8.2, "How sessions are matched"). `aim_evaluate` with an `actor` registers a
+distinct judge session for the verdict.
 
 ### 7.2 CLI (`agraph`)
 One binary serves, bridges MCP, runs hooks, and acts as a client:
@@ -309,14 +322,31 @@ agraph inbox [--graph g]                      agraph resolve <request> --choice 
 agraph directive <graph> --node key --kind guidance "Use argon2id"
 agraph ack <directive> [--note "…"]
 agraph orch attach <graph> <key>              agraph orch queue <graph> <key>
-agraph hook session-start|heartbeat|stop|pre-compact    # for Claude Code hooks
+agraph orch heartbeat|detach <graph> <key> [--handoff "…"]
+agraph hook session-start|post-tool-use|stop [--subagent]|subagent-stop|pre-compact
+agraph token create --name ci --role agent    agraph token list | revoke <id>
+agraph claude install [--dir .] [--profile worker] [--npx]   # .mcp.json + hooks + skill
+agraph simulate <spec> [--profile sonnet-worker,haiku-worker] [--speed 60]
 agraph db backup|export
 ```
 
+The short forms above have grouped equivalents that share one implementation: `graph
+list|create|validate|show|start|pause|resume|cancel|archive|export|mutate`, `work next`, `node
+show|claim|briefing|pause|resume|skip|fail|retry`, `attempt show|heartbeat|note|metrics|submit|
+fail|block|release`, `inbox list|resolve`, `directive send|ack`, and `orchestrator` (alias of
+`orch`). `agraph hook heartbeat` is an alias of `post-tool-use`. Evidence flags use `kind:value`
+(`commit:3f9a2c1`, `pr:…`, `file:…`, `cmd:pnpm test=0`, where a command's trailing `=N` is its
+exit code). Errors print the server's code and hint and exit 1 (usage errors exit 2).
+
 Environment variables: `AGENT_GRAPHS_URL`, `AGENT_GRAPHS_TOKEN`, `AGENT_GRAPHS_GRAPH` (default
 graph), `AGENT_GRAPHS_ACTOR` (`model=claude-opus-5-5,thinking=high,mechanism=claude-code`),
-`AGENT_GRAPHS_ATTEMPT` (the default attempt for subagents), and `AGENT_GRAPHS_STOP_POLICY`
-(`block | warn | off`). Every command supports `--json`.
+`AGENT_GRAPHS_ATTEMPT` (the default attempt for subagents), `AGENT_GRAPHS_SESSION` (act as this
+session, for example after `orch attach`, to exercise orchestrator capabilities),
+`AGENT_GRAPHS_CLIENT_SESSION` (the runtime's own session id; the SessionStart hook exports it
+through `CLAUDE_ENV_FILE`), and `AGENT_GRAPHS_STOP_POLICY` (`block | warn | off`). Hooks also read
+`AGENT_GRAPHS_HEARTBEAT_THROTTLE` (seconds, default 60), `AGENT_GRAPHS_HOOK_TIMEOUT_MS`, and
+`AGENT_GRAPHS_STATE_DIR` (small state files; default `$TMPDIR/agent-graphs`). `agraph login`
+saves a URL and token used when the variables are unset. Every command supports `--json`.
 
 ### 7.3 REST
 Anything that speaks HTTP can participate. See [api.md](api.md) and `GET /api/v1/openapi.json`
@@ -324,13 +354,16 @@ for typed client generation.
 
 ## 8. Claude Code integration
 
-The files live in `integrations/claude-code/` (built in M3).
+The files live in `integrations/claude-code/`: a README, example `mcp.json` and `settings.json`,
+and the skill. `agraph claude install --dir <repo>` writes or merges all three into a repository
+(idempotent; it only replaces entries it recognizes as its own).
 
 ### 8.1 MCP config (`.mcp.json` in the target repository)
 ```json
 { "mcpServers": { "agent-graphs": {
     "command": "npx", "args": ["-y", "agent-graphs", "mcp"],
-    "env": { "AGENT_GRAPHS_URL": "http://localhost:4747", "AGENT_GRAPHS_TOKEN": "${AGENT_GRAPHS_TOKEN}" } } } }
+    "env": { "AGENT_GRAPHS_URL": "http://localhost:4747", "AGENT_GRAPHS_TOKEN": "${AGENT_GRAPHS_TOKEN:-}",
+             "AGENT_GRAPHS_ACTOR": "mechanism=claude-code,provider=anthropic" } } } }
 ```
 Before M5 packaging, use `"command": "node", "args": ["<repo>/packages/cli/bin/agraph.js", "mcp"]`.
 
@@ -338,10 +371,24 @@ Before M5 packaging, use `"command": "node", "args": ["<repo>/packages/cli/bin/a
 | Hook | Command | Behavior |
 |---|---|---|
 | `SessionStart` (startup, resume, compact, clear) | `agraph hook session-start` | Reads the hook JSON (`session_id`, `source`). If this Claude session holds attempts or orchestrator roles: on `compact` or `resume`, injects the **briefing or sitrep** as additional context; on `startup`, injects a one-line reminder. Otherwise, with `AGENT_GRAPHS_GRAPH` set, it injects a short sitrep. |
-| `PostToolUse` (`*`) | `agraph hook heartbeat` | A throttled (≥60 s) session heartbeat by `clientSessionId`. It renews every lease held by the session and its child sessions (dispatched subagents). When the response carries new directives, it surfaces them as additional context (where the hook API supports it) and marks them `delivered` via `hook`. It is fast and never blocks the tool. |
+| `PostToolUse` (`*`) | `agraph hook post-tool-use` (alias `heartbeat`) | A throttled (≥60 s) session heartbeat by `clientSessionId`. It renews every lease held by the session and its child sessions (dispatched subagents). When the response carries new directives, it surfaces them as additional context (where the hook API supports it) and marks them `delivered` via `hook`. It is fast and never blocks the tool. |
 | `Stop` | `agraph hook stop` | If the session tree holds `running` attempts, it returns `{"decision":"block","reason":"You hold attempt at_… on implement-api. Submit, fail, block, or release it (with a handoff) before stopping."}`. It respects `stop_hook_active` to avoid loops, and `AGENT_GRAPHS_STOP_POLICY`. |
 | `SubagentStop` | `agraph hook stop --subagent` | **Warn only**: it lists open attempts dispatched from this session. Hook input can't reliably tell which subagent is stopping, so blocking would hit sibling subagents. |
 | `PreCompact` | `agraph hook pre-compact` | Records a `session.compacted` event. `SessionStart(compact)` restores the briefing afterwards. |
+
+All hooks read the Claude Code hook JSON on stdin and answer with the hook output JSON
+(`hookSpecificOutput.additionalContext` for SessionStart and PostToolUse, `decision`/`reason` for
+Stop, `systemMessage` for warnings). They fail open: when the server is unreachable or anything
+fails they exit 0 without output. A throttled PostToolUse is decided by the `agraph` launcher
+before the CLI loads (one `stat` of a stamp file), well under 100 ms.
+
+**How sessions are matched.** Claude Code passes `session_id` to hooks but not to MCP servers.
+`SessionStart` records it for the project directory (and exports `AGENT_GRAPHS_CLIENT_SESSION`
+through `CLAUDE_ENV_FILE` for CLI use); the stdio MCP server reads it back and attaches it to
+claims and attachments as `actor.clientSessionId`, so the session that holds the lease is the one
+the hooks heartbeat. Explicit values win (`AGENT_GRAPHS_CLIENT_SESSION`, or `clientSessionId` in
+a tool's `actor`); two Claude Code sessions running in the same directory should pass it
+explicitly.
 
 ### 8.3 Skill
 `integrations/claude-code/skills/agent-graphs/SKILL.md` teaches the protocol: the worker loop,

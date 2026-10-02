@@ -106,13 +106,14 @@ export class SimLead {
       } else if ((item.kind === 'resolve' || item.kind === 'approve') && item.requestId) {
         if (this.options.resolve === false) continue;
         const request = w.openRequests.find((r) => r.id === item.requestId);
-        if (!request) continue;
+        if (!request || this.resolver.gaveUp(request.id)) continue;
         const decision = this.resolver.decide(request);
         if (!decision) continue;
         const out = await w.attempt(this.name, `resolve ${request.id}`, () =>
           lead.resolveRequest(request.id, decision),
         );
-        if (out) {
+        if (!out) this.resolver.failed(request.id);
+        else {
           w.stats.resolutions++;
           w.log(`${this.name} resolved "${request.title}" → ${decision.choice}`);
         }

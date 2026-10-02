@@ -4,6 +4,7 @@
  * that embed the tools in another agent runtime.
  */
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { type CreateMcpServerOptions, createMcpServer } from './server';
@@ -28,6 +29,25 @@ export async function connectHttp(
   const transport = new StreamableHTTPClientTransport(new URL(url), {
     ...(options.fetch ? { fetch: options.fetch } : {}),
     ...(options.headers ? { requestInit: { headers: options.headers } } : {}),
+  });
+  const client = new Client({ name: 'agent-graphs-test', version: '0.0.0' });
+  await client.connect(transport);
+  return client;
+}
+
+/** A connected MCP client talking to a spawned stdio server (e.g. `agraph mcp`). */
+export async function connectStdio(options: {
+  command: string;
+  args: string[];
+  env?: Record<string, string>;
+  cwd?: string;
+}): Promise<Client> {
+  const transport = new StdioClientTransport({
+    command: options.command,
+    args: options.args,
+    ...(options.env ? { env: options.env } : {}),
+    ...(options.cwd ? { cwd: options.cwd } : {}),
+    stderr: 'pipe',
   });
   const client = new Client({ name: 'agent-graphs-test', version: '0.0.0' });
   await client.connect(transport);

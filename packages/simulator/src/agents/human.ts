@@ -31,12 +31,14 @@ export class SimHuman {
       if (r.assignee === 'orchestrator' && !this.options.includeOrchestrator) continue;
       if (!this.firstSeen.has(r.id)) this.firstSeen.set(r.id, now);
       if (now - (this.firstSeen.get(r.id) as number) < delay) continue;
+      if (this.resolver.gaveUp(r.id)) continue;
       const decision = this.resolver.decide(r);
       if (!decision) continue;
       const out = await w.attempt(this.name, `resolve ${r.id}`, () =>
         w.admin(this.name).resolveRequest(r.id, decision),
       );
-      if (out) {
+      if (!out) this.resolver.failed(r.id);
+      else {
         w.stats.resolutions++;
         w.log(
           `${this.name} resolved ${r.kind}/${(r as { subject?: string }).subject} "${r.title}" → ${decision.choice}`,

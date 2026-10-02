@@ -193,7 +193,11 @@ async function sessionStart(sessionId: string, input: HookInput, deps: HookDeps)
   const { client, env } = deps;
   const source = input.source ?? 'startup';
   try {
-    writeClientSession(input.cwd ?? deps.cwd, sessionId, { env, now: deps.now, source });
+    const dirs = new Set([
+      input.cwd ?? deps.cwd,
+      ...(env.CLAUDE_PROJECT_DIR ? [env.CLAUDE_PROJECT_DIR] : []),
+    ]);
+    for (const dir of dirs) writeClientSession(dir, sessionId, { env, now: deps.now, source });
   } catch {
     // best effort: the MCP server can still take clientSessionId from tool arguments
   }

@@ -33,6 +33,17 @@ export class Resolver {
     private readonly who: 'human' | 'orchestrator',
   ) {}
 
+  /** Requests whose resolution failed: retried at most twice, so a dead end cannot spin. */
+  private readonly failures = new Map<string, number>();
+
+  gaveUp(requestId: string): boolean {
+    return (this.failures.get(requestId) ?? 0) >= 2;
+  }
+
+  failed(requestId: string): void {
+    this.failures.set(requestId, (this.failures.get(requestId) ?? 0) + 1);
+  }
+
   decide(r: WireRequest | HumanRequest): Resolution | undefined {
     const w = this.world;
     const nodeKey = w.nodeKeyOf(r.nodeId);
@@ -40,7 +51,12 @@ export class Resolver {
     switch (subject) {
       case 'gate': {
         const scripted = nodeKey ? w.nextGateDecision(nodeKey) : undefined;
-        const reject = scripted ? scripted === 'reject' : w.rng.chance(this.policy.gateRejectRate);
+        // Unscripted rejections only for gates that trigger a loop: rejecting any other gate
+        // fails it terminally (a dead end that needs an admin reopen).
+        const triggersLoop = w.view?.loops.some((l) => l.fromNodeId === r.nodeId) ?? false;
+        const reject = scripted
+          ? scripted === 'reject'
+          : triggersLoop && w.rng.chance(this.policy.gateRejectRate);
         return reject
           ? {
               choice: 'reject',
@@ -98,8 +114,13 @@ export class Resolver {
         }
         return { choice: 'waive', data: { justification: 'Spend approved for this run.' } };
       }
-      case 'stall':
-        return { choice: 'retry', data: { extraAttempts: 1 }, comment: 'Retry the blocking node.' };
+      case 'stall': {
+        // The engine only retries tasks; a failed gate or milestone can only be skipped.
+        const kind = w.view?.nodes.find((n) => n.id === r.nodeId)?.kind;
+        return kind && kind !== 'task'
+          ? { choice: 'skip', data: { reason: 'Unblocking the graph; decision recorded.' } }
+          : { choice: 'retry', data: { extraAttempts: 1 }, comment: 'Retry the blocking node.' };
+      }
       case 'verification':
         return this.policy.verification === 'fail'
           ? { choice: 'fail', comment: 'Verification failed.' }

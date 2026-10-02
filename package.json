@@ -11,6 +11,7 @@
   },
   "scripts": {
     "dev": "pnpm --parallel --filter @agent-graphs/server --filter @agent-graphs/web dev",
+    "demo": "node scripts/demo.mjs",
     "build": "pnpm -r --if-present build",
     "test": "vitest run",
     "test:watch": "vitest",

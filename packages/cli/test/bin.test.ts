@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { connectStdio, resultText } from '@agent-graphs/mcp/testing';
 import { startServer } from '@agent-graphs/server';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { MINIMAL, REPO } from './helpers';
@@ -82,6 +83,53 @@ describe('the agraph binary against a live server', () => {
     expect(stop).toMatchObject({ code: 0, stdout: '' });
     const down = await agraph(['hook', 'stop'], input, { AGENT_GRAPHS_URL: 'http://127.0.0.1:9' });
     expect(down).toMatchObject({ code: 0, stdout: '' });
+  }, 60_000);
+
+  it('serves MCP over stdio (agraph mcp) using the session recorded by SessionStart', async () => {
+    const project = mkdtempSync(join(tmpdir(), 'agraph-project-'));
+    const env = {
+      AGENT_GRAPHS_URL: url,
+      AGENT_GRAPHS_STATE_DIR: join(dir, 'state'),
+      AGENT_GRAPHS_ACTOR: 'model=claude-opus-5-5,thinking=high,mechanism=claude-code',
+      PATH: process.env.PATH ?? '',
+    };
+    const start = await agraph(
+      ['hook', 'session-start'],
+      JSON.stringify({ session_id: 'cc-stdio-1', source: 'startup', cwd: project }),
+    );
+    expect(start.code).toBe(0);
+    const spec = join(dir, 'stdio.yaml');
+    writeFileSync(
+      spec,
+      MINIMAL.replace('title: Add dark mode', 'title: Add dark mode\nslug: stdio-demo'),
+    );
+    expect((await agraph(['graph', 'create', '-f', spec, '--start'])).code).toBe(0);
+
+    const mcp = await connectStdio({
+      command: process.execPath,
+      args: [BIN, 'mcp', '--profile', 'worker'],
+      env,
+      cwd: project,
+    });
+    try {
+      const { tools } = await mcp.listTools();
+      expect(tools.map((t) => t.name)).toContain('work_next');
+      expect(tools.map((t) => t.name)).not.toContain('graph_create');
+      const r = await mcp.callTool({ name: 'work_next', arguments: { graph: 'stdio-demo' } });
+      expect(resultText(r)).toContain('Claimed **implement**');
+      const executor = (r.structuredContent as { attempt: { executor: Record<string, string> } })
+        .attempt.executor;
+      expect(executor).toMatchObject({
+        model: 'claude-opus-5-5',
+        mechanism: 'claude-code',
+        clientSessionId: 'cc-stdio-1',
+      });
+      // The Stop hook for that Claude session now blocks.
+      const stop = await agraph(['hook', 'stop'], JSON.stringify({ session_id: 'cc-stdio-1' }));
+      expect(JSON.parse(stop.stdout).decision).toBe('block');
+    } finally {
+      await mcp.close();
+    }
   }, 60_000);
 
   it('decides a throttled PostToolUse heartbeat before loading the CLI', async () => {

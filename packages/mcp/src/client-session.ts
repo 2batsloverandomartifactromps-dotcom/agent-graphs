@@ -60,13 +60,17 @@ export function readClientSession(
 
 /**
  * Resolve the runtime session id for a stdio MCP server: `AGENT_GRAPHS_CLIENT_SESSION`, then
- * the record the `SessionStart` hook wrote for the current directory.
+ * the record the `SessionStart` hook wrote for `CLAUDE_PROJECT_DIR` or the current directory.
  */
 export function clientSessionFromEnv(
   env: Record<string, string | undefined> = process.env,
   cwd: string = process.cwd(),
 ): string | undefined {
-  return env.AGENT_GRAPHS_CLIENT_SESSION || readClientSession(cwd, { env });
+  return (
+    env.AGENT_GRAPHS_CLIENT_SESSION ||
+    (env.CLAUDE_PROJECT_DIR ? readClientSession(env.CLAUDE_PROJECT_DIR, { env }) : undefined) ||
+    readClientSession(cwd, { env })
+  );
 }
 
 /**
