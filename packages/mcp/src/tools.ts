@@ -735,12 +735,15 @@ const requestResolve = tool({
   description:
     'Resolve an Inbox request with one of its option ids (e.g. approve/reject, answer {text}, retry {extraAttempts}, extend {extraIterations}, unblock {info}). Requires resolve (or approve for gates). Rejections need a comment.',
   input: {
-    requestId: z.string().min(1).describe('Request id (rq_…).'),
+    requestId: z.string().min(1).optional().describe('Request id (rq_…).'),
+    id: z.string().min(1).optional().describe('Alias of requestId (as in duty-queue hints).'),
     graph: graph.optional().describe("The request's graph (selects your orchestrator session)."),
     ...ResolveBody.shape,
   },
   run: async (args, ctx) => {
-    const { requestId, graph: g, ...body } = args;
+    const { requestId: rid, id: alias, graph: g, ...body } = args;
+    const requestId = rid ?? alias;
+    if (!requestId) throw new UsageError('Pass requestId (the rq_… id from the inbox or queue).');
     const r = await ctx
       .as(ctx.orchestratorSession(g))
       .resolveRequest(requestId, defined(body) as z.infer<typeof ResolveBody>);
