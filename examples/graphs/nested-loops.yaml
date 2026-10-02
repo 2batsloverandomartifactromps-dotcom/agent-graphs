@@ -1,0 +1,71 @@
+# Nested failure-cycles (docs/concepts.md §7.3):
+#   inner loop  api-fix:        implement-api ⇄ api-tests          (max 4 iterations)
+#   outer loop  release-cycle:  design … release-review (human)     (max 2 iterations)
+# A rejected release review resets everything from `design` onward and gives the inner loop
+# a fresh budget (1/4). Used by the engine's scenario tests. Purposes are omitted for brevity,
+# so validation reports warnings (but no errors) for this file.
+schema: agent-graphs/v1
+title: Nested loops demo
+aims:
+  - key: shipped
+    title: Release approved by a human
+    kind: qualitative
+    evaluator: human
+nodes:
+  - key: requirements
+    title: Requirements
+    aim: Clear scope for the change
+    prompt: Write the requirements for the change in docs/req.md.
+    aims: ["Scope, non-goals, and acceptance criteria are explicit"]
+  - key: design
+    title: Design
+    aim: A design that satisfies the requirements
+    needs: [requirements]
+    prompt: Propose the design in docs/design.md, including the API contract.
+    aims:
+      - title: Design addresses every requirement
+        evaluator: agent
+  - key: implement-api
+    title: Implement API
+    aim: Endpoints implemented per the design
+    needs: [design]
+    prompt: Implement the API from docs/design.md.
+    aims:
+      - check: "unit_test_pass_rate >= 1"
+  - key: api-tests
+    title: API tests
+    aim: API integration tests pass
+    needs: [implement-api]
+    prompt: Run the integration suite and report test_pass_rate.
+    aims:
+      - check: "test_pass_rate >= 1"
+  - key: e2e
+    title: End-to-end tests
+    aim: Core journeys pass end to end
+    needs: [api-tests]
+    prompt: Run the e2e suite and report e2e_pass_rate.
+    maxAttempts: 2
+    aims:
+      - check: "e2e_pass_rate >= 1"
+  - key: release-review
+    title: Release review
+    kind: gate
+    aim: A human approves the release
+    needs: [e2e]
+    gate:
+      approver: human
+      instructions: Approve if the release is ready; otherwise explain what to change in the design.
+  - key: ship
+    title: Shipped
+    kind: milestone
+    needs: [release-review]
+loops:
+  - key: api-fix
+    from: api-tests
+    to: implement-api
+    maxIterations: 4
+  - key: release-cycle
+    from: release-review
+    to: design
+    maxIterations: 2
+    onExhausted: escalate

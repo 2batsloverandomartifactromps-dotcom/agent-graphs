@@ -1,0 +1,662 @@
+# yaml-language-server: $schema=http://localhost:4747/api/v1/schema/graph-spec.json
+#
+# The Agent Graphs MVP build plan (docs/PLAN.md §7, milestones M1–M4), expressed as an
+# Agent Graphs spec. Until the server exists (M2) it is a plan document. Once M2 lands, import
+# it (`agraph graph create -f docs/build-graph.yaml`). Record nodes finished before import with
+# `POST /graphs/{g}/nodes/{n}/complete-manually` (with evidence), then drive the rest of the build
+# through the platform itself.
+schema: agent-graphs/v1
+title: Agent Graphs — MVP build
+slug: agent-graphs-mvp
+description: Build the Agent Graphs MVP (core engine, server, agent interfaces, web UI) per docs/PLAN.md.
+tags: [agent-graphs, mvp, dogfood]
+repository:
+  url: https://github.com/2batsloverandomartifactromps-dotcom/agent-graphs
+  branch: main
+
+context: |
+  Read CLAUDE.md first. Normative semantics: docs/concepts.md. Spec syntax: docs/spec-format.md.
+  Storage: docs/data-model.md. HTTP API: docs/api.md. Agent protocol: docs/agent-protocol.md.
+  UI: docs/ui.md and docs/design/ui-mockup.html (open it in a browser; screenshots in docs/design/screenshots/).
+  Architecture, stack and testing strategy: docs/architecture.md.
+  Tooling: pnpm workspaces · TypeScript 7 (`tsc --noEmit`) · Biome · Vitest · Playwright.
+  `pnpm check` = lint + typecheck + license check + tests. Run it before every submission.
+constraints:
+  - Only permissively licensed dependencies (docs/licensing.md). Run `pnpm check:licenses` after adding any dependency.
+  - packages/core stays pure — no I/O, no Node-only APIs — so the web app and simulator can use it.
+  - When behavior must deviate from the docs, update the docs in the same change and write a decision note.
+  - Every submission includes proof notes with the exact commands run and their exit codes.
+  - Keep commits small and focused; never commit secrets or local data directories.
+
+aims:
+  - key: mvp-demo
+    title: A developer can run `pnpm dev`, create a graph from YAML, watch simulated agents run it live, and resolve Inbox requests
+    kind: qualitative
+    evaluator: human
+    criteria:
+      - Works from a clean clone following README.md
+      - UI matches docs/ui.md and the mockup's visual language
+      - Loops, gates, escalations, and directives all observable end to end
+  - key: dogfood
+    title: A real Claude Code session completed nodes of this graph over MCP, with annotated notes
+    kind: qualitative
+    evaluator: human
+  - key: ci-green
+    title: CI is green on the main branch
+    check: "ci_pass_rate >= 1"
+  - key: licenses-clean
+    title: No license policy violations
+    check: "license_violations == 0"
+
+policy:
+  maxAttempts: 3
+  onExhausted: escalate
+  leaseTtl: 45m
+  maxParallel: 4
+  mutations: append
+  requirePlanApproval: false
+  evaluation: { independent: true }
+  requireProofForDone: true
+
+defaults:
+  executor: { provider: anthropic, mechanism: claude-code }
+
+# Dogfood the optional self-evolution design (docs/self-evolution.md) in its safest mode: lessons
+# learned from fix-cycles appear in later briefings. No automatic structural edits.
+evolution:
+  mode: learn
+  scope: [guidance, checklists]
+
+orchestrators:
+  - key: lead
+    name: Lead
+    role: lead
+    aim: Deliver the MVP milestones in order, with every node evidenced and docs kept in sync
+    purpose: Keeps the multi-week build coherent across many sessions and context resets
+    prompt: |
+      Attach as `lead`. Each cycle: read the sitrep; dispatch ready nodes to subagents (claim on their
+      behalf with the recommended executor, pass the attempt id and briefing, use isolated worktrees
+      for parallel code nodes); verify subagent results landed as notes; merge finished branches;
+      resolve escalations you can answer from the docs; keep CI green and report `ci_pass_rate` and
+      `license_violations` on the graph after each merge; write a handoff note at least hourly.
+    scope: all
+    capabilities: [dispatch, evaluate, mutate, resolve]
+    triggers: [node.status_changed, request.created, loop.exhausted]
+    executor: { model: claude-opus-5-5, thinking: high }
+  - key: reviewer
+    name: Reviewer
+    role: reviewer
+    aim: Judge qualitative aims strictly against the docs, with actionable rationales
+    purpose: Independent judgment keeps "done" honest
+    prompt: |
+      Attach as `reviewer`. For each attempt awaiting your verdict: read the diff, notes and evidence,
+      compare against the cited docs section, and judge each aim. On `unmet`, list concrete changes.
+      Also approve gates assigned to you only when their acceptance criteria are evidenced.
+    scope: all
+    capabilities: [evaluate, approve]
+    triggers: [node.status_changed]
+    executor: { model: claude-opus-5-5, thinking: high, mechanism: claude-agent-sdk }
+  - key: auditor
+    name: Auditor
+    role: monitor
+    aim: No audit gaps; docs and implementation never drift
+    purpose: Catches missing proof, stale docs, and license problems early
+    prompt: |
+      Periodically: check audit gaps, run `pnpm check:licenses`, and spot-check that recently changed
+      code matches docs. Raise findings; never fix silently.
+    scope: all
+    capabilities: []
+    aims:
+      - title: Every done node has a proof note
+        terminating: false
+    executor: { model: claude-sonnet-5-5, thinking: medium }
+
+nodes:
+  # ───────────────────────────── M1 · core engine (packages/core) ─────────────────────────────
+  - key: core-schemas
+    title: Core zod schemas & types
+    aim: Zod schemas for the spec, entities, DTOs, annotations and vocab, exported from @agent-graphs/core
+    purpose: The single source of truth for types, validation, OpenAPI, JSON Schema and MCP tools
+    prompt: |
+      Implement packages/core/src/schemas/* and src/spec/schema.ts per docs/concepts.md,
+      docs/data-model.md (entity shapes), docs/spec-format.md (spec syntax incl. shorthands as
+      preprocessors) and docs/api.md (request/response DTOs). Export inferred types. Add
+      packages/core/src/vocab.ts (models, providers, mechanisms, thinking levels with display names).
+      Add a script that emits the JSON Schema for specs to packages/core/dist-schema/graph-spec.schema.json.
+    deliverables: [packages/core/src/schemas/, packages/core/src/spec/schema.ts, packages/core/src/vocab.ts]
+    aims:
+      - check: "typecheck_errors == 0"
+      - key: matches-docs
+        title: Schemas match the docs field-for-field (names, enums, defaults)
+        evaluator: orchestrator
+        evaluatorKey: reviewer
+    tags: [m1, core]
+    priority: p0
+    executor: { model: claude-opus-5-5, thinking: high }
+
+  - key: core-spec
+    title: Spec parse, normalize & validate
+    aim: YAML/JSON specs parse, normalize (shorthands, defaults) and validate with every documented rule
+    purpose: Agents author graphs as specs; precise errors with hints make them self-correcting
+    needs: [core-schemas]
+    prompt: |
+      Implement packages/core/src/spec/{parse,normalize,validate}.ts. Every error and warning in
+      docs/spec-format.md §8 gets a code, a path, a message and a hint ("did you mean" for unknown
+      keys/refs). Add a test per rule, plus a test that every file in examples/graphs/ and
+      docs/build-graph.yaml validates with zero errors. Report `test_pass_rate`, `coverage`
+      and `examples_valid_ratio`.
+    aims:
+      - check: "test_pass_rate >= 1"
+      - check: "coverage >= 0.9"
+      - check: "examples_valid_ratio >= 1"
+    tags: [m1, core]
+    priority: p0
+    executor: { model: claude-sonnet-5-5, thinking: high }
+
+  - key: core-algorithms
+    title: Graph algorithms
+    aim: Topological order, cycle reporting, reachability, loop bodies, laminarity, single-exit, critical path
+    purpose: Validation, scheduling and the UI all rely on these being correct and fast
+    needs: [core-schemas]
+    prompt: |
+      Implement packages/core/src/graph/*. Cycle errors must report the cycle path. Loop bodies are
+      all nodes on requires-paths from `to` to `from`. Benchmark on a generated 2000-node graph
+      (target: full validation < 50 ms). Report `test_pass_rate` and `coverage`.
+    aims:
+      - check: "test_pass_rate >= 1"
+      - check: "coverage >= 0.9"
+      - check: "validate_2000_nodes_ms < 50"
+    tags: [m1, core]
+    priority: p0
+    executor: { model: claude-opus-5-5, thinking: high }
+
+  - key: core-engine
+    title: Engine (pure state transitions)
+    aim: Every transition in docs/concepts.md §3–§11 implemented as pure functions returning effects + events
+    purpose: All behavior lives here, deterministic and testable without a database
+    needs:
+      - key: core-spec
+        relation: provides_input_for
+        guidance: Operate on the normalized spec types core-spec produces; never re-parse YAML in the engine
+        pitfalls: Don't duplicate validation rules inside transitions; call the shared validators
+      - key: core-algorithms
+        relation: provides_input_for
+        guidance: Reuse loop-body and readiness helpers from src/graph instead of recomputing ad hoc
+    prompt: |
+      Implement packages/core/src/engine/* with the shape in docs/architecture.md §3.3:
+      claim, heartbeat, submit, evaluate, fail, block, release, expireLeases, readiness, gates,
+      milestones, loop firing with feedback, exhaustion policies, pause/resume/skip/retry/reopen,
+      complete-manually, graph verifying/completion, guard aims, mutation validation, request
+      resolution effects and directive lifecycle. Table-driven tests per transition.
+    aims:
+      - check: "test_pass_rate >= 1"
+      - check: "coverage >= 0.9"
+      - key: matches-concepts
+        title: Behavior matches docs/concepts.md exactly (statuses, counting rules, loop resets, policies)
+        evaluator: orchestrator
+        evaluatorKey: reviewer
+    tags: [m1, core]
+    priority: p0
+    executor: { model: claude-opus-5-5, thinking: xhigh }
+
+  - key: core-invariants
+    title: Invariant property tests
+    aim: The invariants in docs/concepts.md §15 hold over random graphs and random action sequences
+    purpose: Catches the subtle state-machine bugs table tests miss
+    needs: [core-engine]
+    prompt: |
+      Using fast-check, generate random valid specs (incl. nested loops) and random sequences of
+      agent/human actions with a fake clock; assert all §15 invariants after every step. Report
+      `invariant_runs` and `invariant_failures`; on failure, write a finding with the shrunk
+      counterexample — it becomes the engine fix-cycle feedback.
+    aims:
+      - check: "invariant_runs >= 1000"
+      - check: "invariant_failures == 0"
+    tags: [m1, core, tests]
+    executor: { model: claude-opus-5-5, thinking: high }
+
+  - key: core-briefing
+    title: Briefing & sitrep renderers
+    aim: Token-budgeted briefings and sitreps exactly as specified in docs/agent-protocol.md §4
+    purpose: The heart of context resilience for agents
+    needs: [core-schemas]
+    prompt: |
+      Implement packages/core/src/briefing/* as pure functions from read-model inputs to markdown
+      and JSON. Honor section priorities and truncation rules; wrap other agents' content in
+      <agent-content> blocks. Snapshot-test the notes-app example at budgets 2k/6k/12k.
+    aims:
+      - check: "test_pass_rate >= 1"
+      - key: briefing-quality
+        title: Sections, priorities and provenance labels match the protocol; output stays within budget
+        evaluator: orchestrator
+        evaluatorKey: reviewer
+    tags: [m1, core]
+    executor: { model: claude-sonnet-5-5, thinking: high }
+
+  - key: core-evolution
+    title: Self-evolution core (pure)
+    aim: Edit DSL, spec patching, protected-field checks, canonical hashing, gate decision, lesson ranking and lesson-duty detection
+    purpose: Lets later milestones add learn/propose/auto modes without touching engine semantics
+    needs: [core-schemas, core-algorithms]
+    prompt: |
+      Implement packages/core/src/evolution/* per docs/self-evolution.md §6–§9 and the
+      architecture note in docs/architecture.md §3.6. Pure functions only: normalize and hash edit
+      sets (equivalent edits hash equally), apply ops to a spec and re-run full validation, reject
+      protected-field edits, compute the objective score and the gate decision (candidate ≥
+      incumbent, ties accepted, constraints and sample minimums), rank lessons for a briefing,
+      and detect lesson duties after a pass that followed failures.
+    aims:
+      - check: "test_pass_rate >= 1"
+      - check: "coverage >= 0.9"
+      - key: matches-design
+        title: Behavior matches docs/self-evolution.md (gate rule, protected fields, rejection-memory hashing)
+        evaluator: orchestrator
+        evaluatorKey: reviewer
+    tags: [m1, core, evolution]
+    executor: { model: claude-opus-5-5, thinking: high }
+
+  - key: m1-gate
+    title: M1 gate — core engine
+    kind: gate
+    aim: Core engine meets the M1 acceptance criteria in docs/PLAN.md
+    purpose: Everything downstream builds on these schemas and semantics
+    needs: [core-invariants, core-briefing, core-evolution]
+    gate:
+      approver: orchestrator
+      approverKey: reviewer
+      instructions: Verify each M1 "done when" item in docs/PLAN.md §7 has proof notes.
+
+  # ───────────────────────────── M2 · server & API (apps/server) ─────────────────────────────
+  - key: db-schema
+    title: Database schema & migrations
+    aim: Drizzle schema and migrations matching docs/data-model.md, applied on startup with backup
+    purpose: Durable, auditable storage for everything
+    needs: [m1-gate]
+    prompt: |
+      Implement apps/server/src/db/schema.ts and generated migrations (drizzle-kit), pragmas, the
+      startup migrate-with-backup routine, FTS5 notes table with triggers, and repository helpers to
+      load GraphState and apply engine effects.
+    aims:
+      - check: "test_pass_rate >= 1"
+      - title: Tables, columns and indexes match docs/data-model.md
+        evaluator: orchestrator
+        evaluatorKey: reviewer
+    tags: [m2, server]
+    priority: p0
+    executor: { model: claude-sonnet-5-5, thinking: high }
+
+  - key: server-commands
+    title: Command services & event log
+    aim: Every use case runs as one transaction applying engine effects and appending hash-chained events
+    purpose: Atomic, auditable state changes
+    needs: [db-schema]
+    prompt: |
+      Implement apps/server/src/commands/* (one per use case) and src/events/* (append with hash
+      chain per docs/data-model.md, post-commit bus). Include idempotency-key storage and actor
+      resolution (token, session, inline annotation).
+    aims:
+      - check: "test_pass_rate >= 1"
+      - check: "coverage >= 0.8"
+    tags: [m2, server]
+    priority: p0
+    executor: { model: claude-opus-5-5, thinking: high }
+
+  - key: api-routes
+    title: REST routes, auth & OpenAPI
+    aim: All M1–M4 endpoints in docs/api.md with auth modes, errors with hints, ETags and pagination
+    purpose: The contract every client builds on
+    needs: [server-commands]
+    prompt: |
+      Implement apps/server/src/routes/* with @hono/zod-openapi. Serve /api/v1/openapi.json and
+      /api/docs. Error envelope and codes per docs/api.md §1. Integration-test every endpoint via
+      app.request() on in-memory SQLite.
+    aims:
+      - check: "test_pass_rate >= 1"
+      - check: "openapi_valid == 1"
+    tags: [m2, server]
+    executor: { model: claude-sonnet-5-5, thinking: high }
+
+  - key: sse-and-jobs
+    title: SSE streams & background jobs
+    aim: Live SSE with Last-Event-ID replay, plus lease sweeper, guards, stall and purge jobs
+    purpose: Live UI and automatic recovery from dead agents
+    needs: [server-commands]
+    prompt: |
+      Implement the SSE hub (graph and global streams, snapshots, ping, resync) and the jobs in
+      docs/architecture.md §3.4 with an injectable clock. Test replay and lease expiry end to end.
+    aims:
+      - check: "test_pass_rate >= 1"
+    tags: [m2, server]
+    executor: { model: claude-sonnet-5-5, thinking: high }
+
+  - key: api-scenarios
+    title: API scenario suite & performance smoke
+    aim: Multi-agent lifecycle scenarios pass against the real server; performance targets met
+    purpose: Proves the system behaves as documented under realistic sequences
+    needs: [api-routes, sse-and-jobs]
+    prompt: |
+      Write YAML scenario scripts (packages/simulator scenario runner) covering: nested loops,
+      gate-rejection loop, lease expiry, escalation resolutions, directives + acks, guard pause,
+      plan approval, mutations under each policy. Measure claim p95 on a 1000-node graph and verify
+      the hash chain after all runs. On failure write findings naming the scenario and step.
+    aims:
+      - check: "scenario_pass_rate >= 1"
+      - check: "claim_p95_ms < 20"
+      - check: "chain_verified == 1"
+    tags: [m2, server, tests]
+    executor: { model: claude-sonnet-5-5, thinking: high }
+
+  - key: api-contract-review
+    title: API contract review
+    kind: gate
+    aim: A human approves the API surface before the SDK, MCP and UI build on it
+    purpose: Changing the contract later is expensive
+    needs: [api-scenarios]
+    gate:
+      approver: human
+      instructions: Skim /api/docs and docs/api.md; check naming, payloads and error hints. Approve or request changes.
+
+  # ───────────────────────────── M3 · agent interfaces ─────────────────────────────
+  - key: sdk
+    title: TypeScript SDK
+    aim: A typed client for every endpoint plus an SSE helper, usable in Node and browsers
+    purpose: Shared by the CLI, MCP server, simulator and web app
+    needs: [api-contract-review]
+    prompt: Implement packages/sdk with types from @agent-graphs/core. Test against a live in-process server.
+    aims:
+      - check: "test_pass_rate >= 1"
+    tags: [m3, agents]
+    executor: { model: claude-sonnet-5-5, thinking: medium }
+
+  - key: cli
+    title: agraph CLI
+    aim: Every command in docs/agent-protocol.md §7.2, including serve, mcp and hook subcommands
+    purpose: Shell agents, hooks and humans all use it
+    needs: [sdk]
+    prompt: |
+      Implement packages/cli (commander). `--json` everywhere. Hooks read Claude Code hook JSON from
+      stdin, finish < 100 ms when throttled, and fail open except `stop` under the block policy.
+    aims:
+      - check: "test_pass_rate >= 1"
+      - title: All documented commands exist with the documented flags
+    tags: [m3, agents]
+    executor: { model: claude-sonnet-5-5, thinking: medium }
+
+  - key: mcp-server
+    title: MCP server
+    aim: Tools, prompts, resources and profiles per docs/agent-protocol.md §7.1 over stdio and HTTP
+    purpose: The primary way Claude Code and other MCP clients use the platform
+    needs: [sdk]
+    prompt: |
+      Implement packages/mcp with @modelcontextprotocol/sdk. Tool results: concise markdown with ids
+      and next-step hints plus structuredContent. Mount Streamable HTTP at /mcp in the server.
+      Test tools via an in-memory MCP client.
+    aims:
+      - check: "test_pass_rate >= 1"
+      - title: Tool names, inputs and results match the protocol doc; descriptions are LLM-friendly
+        evaluator: orchestrator
+        evaluatorKey: reviewer
+    tags: [m3, agents]
+    executor: { model: claude-sonnet-5-5, thinking: high }
+
+  - key: simulator
+    title: Simulator & demo
+    aim: Fake agents that execute example graphs live with realistic notes, failures and loops
+    purpose: Drives UI development, demos and scenario tests without real agents
+    needs: [sdk]
+    prompt: |
+      Implement packages/simulator: configurable fake workers (models, thinking, mechanisms, failure
+      rates, speed), a reviewer, a human-request auto-resolver for demos, seed data, and `pnpm demo`
+      (server + UI + simulator on examples/graphs/notes-app.yaml).
+    aims:
+      - check: "simulated_graph_completed == 1"
+      - title: A demo run shows at least one loop iteration and one escalation
+    tags: [m3, agents]
+    executor: { model: claude-sonnet-5-5, thinking: medium }
+
+  - key: claude-code-integration
+    title: Claude Code integration
+    aim: Hooks, skill and config examples that make the protocol automatic in Claude Code
+    purpose: Context resilience without relying on agents remembering the protocol
+    needs: [cli, mcp-server]
+    prompt: |
+      Create integrations/claude-code/: .mcp.json and settings.json examples wiring `agraph hook`
+      (SessionStart, PostToolUse, Stop/SubagentStop, PreCompact) and skills/agent-graphs/SKILL.md.
+      Verify compaction re-injection and Stop blocking with recorded proof.
+    aims:
+      - check: "hook_test_pass_rate >= 1"
+      - title: A fresh session following the README can connect and claim within 5 minutes
+    tags: [m3, agents]
+    executor: { model: claude-opus-5-5, thinking: high }
+
+  - key: evolution-learn
+    title: Self-evolution E1 — learn mode
+    aim: Lessons and edge procedural knowledge captured from fix-cycles and retrieved into briefings
+    purpose: The first, safest step of self-evolution; every later mode builds on it
+    needs: [api-contract-review]
+    prompt: |
+      Per docs/self-evolution.md §6–§7: lessons table + API (/lessons, merge/revise/retire/tag),
+      lesson duties on pass-after-failure (submit response `lessonDuty`), lesson applications and
+      counters, edge attribute endpoints with provenance, briefing sections "Lessons & pitfalls"
+      and "Downstream consumers", MCP tools lesson_add and lessons_search. Prove it with a
+      simulator run on examples/graphs/notes-app.yaml that produces a lesson and shows it in the
+      next relevant briefing.
+    aims:
+      - check: "test_pass_rate >= 1"
+      - check: "lesson_roundtrip_demo == 1"
+      - title: Learned guidance is clearly labelled as soft guidance with provenance in briefings
+        evaluator: orchestrator
+        evaluatorKey: reviewer
+    tags: [m3, evolution]
+    executor: { model: claude-sonnet-5-5, thinking: high }
+
+  - key: dogfood-mcp
+    title: Dogfood over MCP
+    aim: This build graph is imported and at least one remaining node is completed by Claude Code over MCP
+    purpose: The strongest proof that the protocol works for real agents
+    needs: [claude-code-integration]
+    prompt: |
+      Start the server, import docs/build-graph.yaml, record already-finished nodes with
+      complete-manually (with commit evidence), attach a Claude Code session as `lead` over MCP,
+      and complete at least one ready node end to end. Report `mcp_completed_nodes`.
+    aims:
+      - check: "mcp_completed_nodes >= 1"
+      - title: Notes from the session carry model, thinking and mechanism annotations
+        evaluator: human
+    tags: [m3, dogfood]
+    executor: { model: claude-opus-5-5, thinking: high }
+
+  # ───────────────────────────── M4 · web UI (apps/web) ─────────────────────────────
+  - key: ui-foundation
+    title: UI foundation
+    aim: Tokens, components, shell, routing, query + SSE plumbing, matching the mockup
+    purpose: Every screen builds on it; starts as soon as core schemas are fixed
+    needs: [m1-gate]
+    prompt: |
+      Implement apps/web foundations per docs/ui.md §3 and §6 using the mockup's tokens:
+      tokens.css (dark + light), hand-written shadcn-style components on radix-ui, sidebar/top bar,
+      ⌘K palette, TanStack Router + Query, useGraphStream SSE hook, typed fixtures for offline dev.
+    aims:
+      - check: "typecheck_errors == 0"
+      - key: matches-mockup
+        title: Shell and components match the mockup's look and feel in both themes
+        evaluator: orchestrator
+        evaluatorKey: reviewer
+    tags: [m4, ui]
+    priority: p1
+    executor: { model: claude-opus-5-5, thinking: high, role: frontend-engineer }
+
+  - key: ui-overview
+    title: Overview screen
+    aim: KPIs, attention queue, active graph cards, live activity, models in use
+    purpose: The landing view answers "what needs me and what's happening"
+    needs: [ui-foundation, api-contract-review]
+    prompt: Implement / per docs/ui.md §4.1 against the real API.
+    aims:
+      - check: "component_test_pass_rate >= 1"
+    tags: [m4, ui]
+    executor: { model: claude-sonnet-5-5, thinking: high, role: frontend-engineer }
+
+  - key: ui-graphs-list
+    title: Graphs list
+    aim: Searchable, filterable list of all graphs with saved views
+    purpose: Interrogate all, active, completed and failed graphs quickly
+    needs: [ui-foundation, api-contract-review]
+    prompt: Implement /graphs per docs/ui.md §4.2 with URL-backed filters.
+    aims:
+      - check: "component_test_pass_rate >= 1"
+    tags: [m4, ui]
+    executor: { model: claude-sonnet-5-5, thinking: medium, role: frontend-engineer }
+
+  - key: ui-canvas
+    title: Graph canvas
+    aim: Live DAG with node cards, loop regions and back-edges, orchestration lane, LOD and filters
+    purpose: The hero view for understanding a graph at a glance
+    needs: [ui-foundation, api-contract-review]
+    prompt: |
+      Implement the workspace header and Canvas tab per docs/ui.md §4.3 and §5: React Flow + dagre
+      in a worker, structure-hash memoized layout, custom node/edge components, loop hulls,
+      orchestration lane, minimap, focus mode, critical path, table alternative.
+    aims:
+      - check: "component_test_pass_rate >= 1"
+      - check: "canvas_500_nodes_fps >= 50"
+      - title: Canvas matches the mockup and stays readable on the notes-app example
+        evaluator: orchestrator
+        evaluatorKey: reviewer
+    tags: [m4, ui]
+    priority: p1
+    executor: { model: claude-opus-5-5, thinking: high, role: frontend-engineer }
+
+  - key: ui-inspector
+    title: Node & orchestrator inspectors
+    aim: All inspector tabs including Briefing preview and Config edits with directive tracking
+    purpose: Where humans dig into evidence and steer agents
+    needs: [ui-canvas]
+    prompt: |
+      Implement docs/ui.md §4.4 and §4.5, including the change-directive round trip in Config,
+      edge-attribute popovers, and the lessons & pitfalls panel (shown when learn mode is on).
+    aims:
+      - check: "component_test_pass_rate >= 1"
+    tags: [m4, ui]
+    executor: { model: claude-sonnet-5-5, thinking: high, role: frontend-engineer }
+
+  - key: ui-inbox
+    title: Inbox
+    aim: Approvals, questions, escalations and blockers resolvable inline across graphs
+    purpose: The human half of the feedback loop
+    needs: [ui-foundation, api-contract-review]
+    prompt: Implement /inbox per docs/ui.md §4.6 with optimistic actions and consequence lines.
+    aims:
+      - check: "component_test_pass_rate >= 1"
+    tags: [m4, ui]
+    executor: { model: claude-sonnet-5-5, thinking: high, role: frontend-engineer }
+
+  - key: ui-feeds
+    title: Activity, notes & agents views
+    aim: Activity feed, notes explorer with audit gaps, and agents views (graph and global)
+    purpose: Auditing and interrogation across graphs, models and providers
+    needs: [ui-foundation, api-contract-review]
+    prompt: Implement the Activity, Notes and Agents tabs plus /notes and /agents per docs/ui.md §4.3 and §2.
+    aims:
+      - check: "component_test_pass_rate >= 1"
+    tags: [m4, ui]
+    executor: { model: claude-sonnet-5-5, thinking: medium, role: frontend-engineer }
+
+  - key: ui-spec-editor
+    title: New graph & spec editor
+    aim: YAML editor with live validation, hints and canvas preview; create draft / create & start
+    purpose: Lets humans and agents author and review plans visually
+    needs: [ui-canvas]
+    prompt: Implement /graphs/new and the Spec tab per docs/ui.md §4.7 using @agent-graphs/core validation in the browser.
+    aims:
+      - check: "component_test_pass_rate >= 1"
+    tags: [m4, ui]
+    executor: { model: claude-sonnet-5-5, thinking: high, role: frontend-engineer }
+
+  - key: ui-polish
+    title: UI integration & polish
+    aim: All screens integrated against the simulator; visual and interaction details resolved
+    purpose: The fix-up node for e2e and design-review feedback
+    needs: [ui-overview, ui-graphs-list, ui-inspector, ui-inbox, ui-feeds, ui-spec-editor, simulator]
+    prompt: |
+      Run `pnpm demo` and walk every screen. Fix integration bugs, visual mismatches with the mockup,
+      and any feedback carried in from ui-e2e or design-review. Attach before/after screenshots as proof.
+    aims:
+      - check: "typecheck_errors == 0"
+      - title: Every item in the carried feedback is addressed or answered with a decision note
+    tags: [m4, ui]
+    executor: { model: claude-opus-5-5, thinking: high, role: frontend-engineer }
+
+  - key: ui-e2e
+    title: UI end-to-end suite
+    aim: Playwright journeys pass; accessibility and live-latency targets met
+    purpose: Proves the human workflows work against the real server
+    needs: [ui-polish]
+    prompt: |
+      Playwright (executablePath /opt/pw-browsers/chromium when needed): create from spec → live
+      progress via simulator → approve gate → resolve escalation → edit prompt → directive acked.
+      Run axe on key screens. Report `e2e_pass_rate`, `axe_violations`, `live_latency_ms`.
+      On failure, write findings with failing steps and screenshots.
+    aims:
+      - check: "e2e_pass_rate >= 1"
+      - check: "axe_violations == 0"
+      - check: "live_latency_ms < 1000"
+    tags: [m4, ui, tests]
+    executor: { model: claude-sonnet-5-5, thinking: medium }
+
+  - key: design-review
+    title: Design review
+    kind: gate
+    aim: A human approves the UI against the mockup and docs/ui.md
+    purpose: Whether the UI is "beautiful and easily interpretable" is a human judgment
+    needs: [ui-e2e]
+    gate:
+      approver: human
+      instructions: Run `pnpm demo`; compare with docs/design/ui-mockup.html in both themes. Approve or request changes.
+
+  # ───────────────────────────── wrap-up ─────────────────────────────
+  - key: docs-sync
+    title: Docs & quickstart sync
+    aim: Docs match the implementation and the README quickstart works from a clean clone
+    purpose: The docs are the contract for future agents and users
+    needs: [claude-code-integration, design-review]
+    prompt: |
+      Reconcile every doc in docs/ with actual behavior (update docs or file findings). Follow the
+      README quickstart in a clean clone and report `quickstart_success`.
+    aims:
+      - check: "quickstart_success == 1"
+      - title: No contradictions between docs and behavior
+        evaluator: orchestrator
+        evaluatorKey: reviewer
+    tags: [docs]
+    executor: { model: claude-sonnet-5-5, thinking: medium, role: writer }
+
+  - key: mvp-release
+    title: MVP release
+    kind: milestone
+    needs: [docs-sync, dogfood-mcp, evolution-learn]
+
+loops:
+  - key: engine-fix-cycle
+    title: Engine fix cycle
+    from: core-invariants
+    to: core-engine
+    maxIterations: 4
+    feedback: Include the shrunk counterexample and the violated invariant.
+  - key: server-fix-cycle
+    title: Server fix cycle
+    from: api-scenarios
+    to: server-commands
+    maxIterations: 4
+    feedback: Include failing scenario names, steps and server errors.
+  - key: ui-fix-cycle
+    title: UI e2e fix cycle
+    from: ui-e2e
+    to: ui-polish
+    maxIterations: 5
+    feedback: Include failing journeys, screenshots and axe violations.
+  - key: design-cycle
+    title: Design rework
+    from: design-review
+    to: ui-polish
+    maxIterations: 3

@@ -1,0 +1,31 @@
+# Smallest useful graph: one task, one human gate, one failure-cycle between them.
+schema: agent-graphs/v1
+title: Add dark mode
+aims:
+  - Dark mode ships behind a user toggle and persists across reloads   # qualitative shorthand (self-judged)
+nodes:
+  - key: implement
+    title: Implement dark mode
+    aim: Theme toggle with persisted preference
+    purpose: Users asked for a dark theme; this is the whole feature
+    prompt: |
+      Add a theme toggle to the settings page. Persist the choice in localStorage and apply it
+      before first paint to avoid a flash of the wrong theme. Add tests for the persistence logic.
+    aims:
+      - check: "test_pass_rate >= 1"           # quantitative shorthand
+      - title: Toggle is keyboard accessible and labelled
+        evaluator: agent                       # judged by an independent agent
+  - key: review
+    title: Human design review
+    kind: gate
+    aim: A human confirms both themes look right
+    purpose: Visual quality can't be fully tested automatically
+    needs: [implement]
+    gate:
+      approver: human
+      instructions: Check contrast and focus states in both themes.
+loops:
+  - key: review-cycle
+    from: review          # a rejected review…
+    to: implement         # …sends the work back, with the reviewer's comment as feedback
+    maxIterations: 3

@@ -1,0 +1,334 @@
+# yaml-language-server: $schema=http://localhost:4747/api/v1/schema/graph-spec.json
+# A realistic agent-orchestrated app build. Used throughout the docs, the UI mockup, and the
+# simulator. Shows: graph aims (incl. a budget guard), lead/reviewer/auditor orchestrators,
+# human gates, two failure-cycles (one triggered by tests, one by a human gate rejection),
+# parallel branches, informs-edges, and a milestone.
+schema: agent-graphs/v1
+title: Notes app — MVP build
+slug: notes-mvp
+description: Build and deploy a small multi-user notes app with tags and search.
+tags: [webapp, mvp, example]
+repository:
+  url: https://github.com/example/notes-app
+  branch: main
+
+context: |
+  Stack: TypeScript everywhere. API: Hono + SQLite (Drizzle). Web: React + Vite + Tailwind.
+  Tests: Vitest (unit/integration), Playwright (e2e). Deploy target: a single container on Fly.io.
+  Conventions: small modules, zod-validated inputs, no business logic in route handlers.
+constraints:
+  - No new runtime dependency without a `decision` note explaining why.
+  - Keep `pnpm check` green on every commit.
+  - Never commit secrets; staging credentials come from the environment.
+
+aims:
+  - key: deployed-app
+    title: A deployed notes app where a user can sign up, create, edit, tag and search notes
+    kind: qualitative
+    evaluator: human
+    criteria:
+      - Works on the staging URL from a fresh account
+      - Search returns tagged notes within a second
+  - key: e2e
+    title: End-to-end suite passes
+    check: "e2e_pass_rate >= 1"
+  - key: budget
+    title: Spend stays within budget
+    metric: cost_usd
+    source: derived
+    comparator: lte
+    target: 40
+    unit: usd
+    guard: true              # exceeding it pauses the graph and escalates
+
+policy:
+  maxAttempts: 3
+  onExhausted: escalate
+  leaseTtl: 30m
+  maxParallel: 3
+  mutations: append
+  requirePlanApproval: true
+  evaluation: { independent: true }
+
+defaults:
+  executor: { provider: anthropic, mechanism: claude-code }
+
+# Optional self-evolution (docs/self-evolution.md): capture lessons from fix-cycles and feed them
+# into later briefings. Structural changes would require `propose` mode plus approval.
+evolution:
+  mode: learn
+  scope: [guidance, checklists]
+
+orchestrators:
+  - key: lead
+    name: Lead
+    role: lead
+    aim: Drive the graph to completion within budget, with every stage evidenced
+    purpose: Keeps work moving and documented across context resets and subagent handoffs
+    prompt: |
+      Attach as `lead`. Loop: read the sitrep → dispatch ready nodes to subagents (claim on their
+      behalf, pass attempt id + briefing) → monitor heartbeats → relay results subagents failed to
+      report → resolve escalations you can answer from docs/decisions → write a handoff hourly.
+    scope: all
+    capabilities: [dispatch, evaluate, mutate, resolve]
+    triggers: [node.status_changed, request.created, loop.exhausted, aim.guard_violated]
+    executor: { model: claude-opus-5-5, thinking: high }
+  - key: reviewer
+    name: Reviewer
+    role: reviewer
+    aim: Independently judge qualitative aims with specific, actionable rationales
+    purpose: Separates doing from judging so "done" is trustworthy
+    prompt: |
+      Attach as `reviewer`. For each attempt awaiting your verdict, read its notes, evidence and
+      diff; judge each aim against its criteria. On `unmet`, say exactly what to change.
+    scope: all
+    capabilities: [evaluate]
+    triggers: [node.status_changed]
+    executor: { model: claude-sonnet-5-5, thinking: medium, mechanism: claude-agent-sdk }
+  - key: auditor
+    name: Auditor
+    role: monitor
+    aim: Every done node has a proof note; findings ≥ high are never left unaddressed
+    purpose: Catches gaps the busy agents miss
+    prompt: |
+      Periodically check audit gaps and open high-severity findings. Raise findings or questions;
+      never fix work silently.
+    scope: all
+    capabilities: []
+    aims:
+      - title: Every done node has a proof note
+        terminating: false
+    executor: { model: claude-haiku-4-5, thinking: low }
+
+nodes:
+  - key: requirements
+    title: Requirements & acceptance criteria
+    aim: A precise, testable requirements doc
+    purpose: All downstream scope derives from it
+    prompt: |
+      Write docs/requirements.md covering auth (email + password), notes CRUD, tags, search,
+      and non-functional requirements (performance, privacy). Every requirement must be testable.
+    deliverables: [docs/requirements.md]
+    aims:
+      - title: Covers auth, notes CRUD, tags, search, and non-functional requirements; each testable
+        evaluator: orchestrator
+        evaluatorKey: reviewer
+    executor: { model: claude-sonnet-5-5, thinking: medium }
+
+  - key: architecture
+    title: Architecture & decisions
+    aim: An architecture doc with recorded decisions for every major choice
+    purpose: Lets parallel branches build against the same contracts
+    needs: [requirements]
+    prompt: |
+      Write docs/architecture.md: modules, data model, API surface (docs/api.md), auth approach,
+      deployment. Record each significant choice as a `decision` note with alternatives.
+    deliverables: [docs/architecture.md, docs/api.md]
+    aims:
+      - title: API surface and data model are concrete enough to implement without guessing
+        evaluator: orchestrator
+        evaluatorKey: reviewer
+      - title: Every major choice has a decision note
+    executor: { model: claude-opus-5-5, thinking: high }
+
+  - key: plan-review
+    title: Plan review
+    kind: gate
+    aim: A human approves the architecture before implementation starts
+    purpose: Cheapest point to change direction
+    needs: [architecture]
+    gate:
+      approver: human
+      instructions: Read docs/architecture.md and the decision notes. Approve or request changes.
+
+  - key: db-schema
+    title: Database schema & migrations
+    aim: Tables for users, notes, tags with migrations and seed data
+    purpose: The API and search build on it
+    needs: [plan-review]
+    prompt: |
+      Implement the schema from docs/architecture.md with Drizzle, generate migrations, add a seed
+      script, and test that migrations apply cleanly on an empty database.
+    aims:
+      - check: "test_pass_rate >= 1"
+      - Migrations apply cleanly on an empty database
+    executor: { model: claude-sonnet-5-5, thinking: medium }
+
+  - key: implement-api
+    title: Implement REST API
+    aim: CRUD + auth endpoints for notes, matching docs/api.md
+    purpose: Everything in the UI depends on these endpoints
+    needs:
+      - key: db-schema
+        relation: provides_input_for
+        condition: Migrations applied and generated types exported
+        guidance: Import entity types from src/db/schema.ts instead of redefining them
+        pitfalls: Do not change column names here; schema changes go through db-schema
+    prompt: |
+      Implement the endpoints in docs/api.md §Notes using the existing Hono app. Validate every
+      input with zod. Keep handlers thin; business logic lives in services. Write unit tests first.
+    deliverables:
+      - src/api/notes.ts
+      - { name: OpenAPI spec, description: Served at /api/openapi.json, required: true }
+    checklist:
+      - Write handler tests first
+      - { key: openapi, title: Regenerate OpenAPI, required: true }
+    aims:
+      - key: unit-tests
+        check: "unit_test_pass_rate >= 1"
+      - key: layering
+        title: Handlers follow the documented layering
+        criteria: [No business logic in route handlers, All inputs validated with zod]
+        evaluator: orchestrator
+        evaluatorKey: reviewer
+      - key: handles-errors
+        title: All handlers return the standard error envelope
+    tags: [code, backend]
+    priority: p1
+    executor: { model: claude-opus-5-5, thinking: high, role: backend-engineer }
+
+  - key: api-tests
+    title: API integration tests
+    aim: The API integration suite passes with solid coverage
+    purpose: Proves the API before the UI and e2e depend on it
+    needs: [implement-api]
+    prompt: |
+      Write integration tests for every endpoint in docs/api.md (happy paths, auth failures,
+      validation errors). Run the suite and report `test_pass_rate` and `coverage`. On failure,
+      write a finding listing failing tests and first errors — it becomes the fix-cycle feedback.
+    aims:
+      - key: suite-green
+        check: "test_pass_rate >= 1"
+      - key: coverage
+        check: "coverage >= 0.8"
+    tags: [code, backend, tests]
+    executor: { model: claude-sonnet-5-5, thinking: medium }
+
+  - key: ui-shell
+    title: UI shell & design system
+    aim: App shell, routing, auth screens, and shared components
+    purpose: Gives the feature screens a consistent base
+    needs: [plan-review]
+    prompt: Build the React app shell, routing, auth screens and shared components per docs/architecture.md.
+    aims:
+      - check: "typecheck_errors == 0"
+      - title: Auth screens work against the mocked API
+    tags: [code, frontend]
+    executor: { model: claude-sonnet-5-5, thinking: medium }
+
+  - key: notes-editor-ui
+    title: Notes editor UI
+    aim: Create, edit, tag, and delete notes in the browser
+    purpose: The core user experience
+    needs: [ui-shell]
+    informedBy: [architecture]
+    prompt: Implement the notes list and editor screens with optimistic updates and tag editing.
+    aims:
+      - check: "component_test_pass_rate >= 1"
+      - title: Editing feels instant (optimistic updates, no layout shift)
+        evaluator: orchestrator
+        evaluatorKey: reviewer
+    tags: [code, frontend]
+    executor: { model: claude-sonnet-5-5, thinking: medium }
+
+  - key: search-ui
+    title: Search & tag filters
+    aim: Search notes by text and tag with instant results
+    purpose: Findability is a headline requirement
+    needs: [ui-shell]
+    prompt: Add search with debounced queries, tag filters, and highlighted matches.
+    aims:
+      - check: "search_p95_ms <= 200"
+      - title: Search results feel instant and relevant
+        evaluator: human
+      - title: Search is keyboard accessible with labelled controls
+        evaluator: orchestrator
+        evaluatorKey: reviewer
+    tags: [code, frontend]
+    executor: { model: claude-sonnet-5-5, thinking: high }
+
+  - key: design-review
+    title: Design review
+    kind: gate
+    aim: A human approves the UI before end-to-end testing
+    purpose: Catch UX problems before they are locked in by e2e tests
+    needs: [notes-editor-ui, search-ui]
+    gate:
+      approver: human
+      instructions: Try the editor and search on desktop and mobile widths. Approve or request changes.
+
+  - key: privacy-review
+    title: Privacy review
+    kind: gate
+    aim: A human approves what personal data is stored and how long it is kept
+    purpose: The app stores personal notes; launch needs explicit sign-off on data handling
+    needs: [db-schema]
+    gate:
+      approver: human
+      instructions: Review the schema's personal-data fields and the retention rules in docs/requirements.md. Approve or request changes.
+
+  - key: docs
+    title: User documentation
+    aim: A concise user guide and README
+    purpose: Users and operators can self-serve
+    needs: [plan-review]
+    informedBy: [architecture]
+    prompt: Write README.md (setup, deploy) and docs/user-guide.md (features with screenshots).
+    aims:
+      - Covers setup, deploy, and every user-facing feature
+    executor: { model: claude-haiku-4-5, thinking: low, role: writer }
+
+  - key: security-audit
+    title: Security audit
+    aim: No high or critical issues open in auth, data access, or the staging config
+    purpose: The app stores personal notes
+    needs: [plan-review]
+    informedBy: [architecture]
+    prompt: |
+      Review the auth design, data access rules, and the staging environment configuration.
+      File findings with severity. Requires read access to staging (credentials via env).
+    aims:
+      - check: "open_high_findings == 0"
+      - title: Auth and data-access rules reviewed against OWASP ASVS L1
+        evaluator: orchestrator
+        evaluatorKey: reviewer
+    executor: { model: claude-opus-5-5, thinking: high, requires: [staging-access] }
+
+  - key: e2e-tests
+    title: End-to-end tests
+    aim: Playwright suite covering sign-up → create → tag → search passes
+    purpose: Proves the whole product works together
+    needs: [api-tests, design-review]
+    prompt: Write and run Playwright tests for the core journeys. Report `e2e_pass_rate` on the graph too.
+    aims:
+      - check: "e2e_pass_rate >= 1"
+    maxAttempts: 3
+    executor: { model: claude-sonnet-5-5, thinking: medium }
+
+  - key: deploy
+    title: Deploy to staging
+    aim: The app runs on the staging URL
+    purpose: Required for the human acceptance of the graph aim
+    needs: [e2e-tests, security-audit, privacy-review]
+    prompt: Build the container, deploy to staging, run smoke tests, and post the URL as a deliverable.
+    aims:
+      - check: "smoke_pass_rate >= 1"
+    executor: { model: claude-sonnet-5-5, thinking: low }
+
+  - key: mvp-ready
+    title: MVP ready
+    kind: milestone
+    needs: [deploy, docs]
+
+loops:
+  - key: api-fix-cycle
+    title: API fix cycle
+    from: api-tests
+    to: implement-api
+    maxIterations: 4
+    feedback: Include failing test names and the first error of each.
+  - key: design-cycle
+    title: UI design rework      # a rejected design review re-runs the whole UI branch with feedback
+    from: design-review
+    to: ui-shell
+    maxIterations: 3
