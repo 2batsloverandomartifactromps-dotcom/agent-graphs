@@ -51,10 +51,20 @@ and report back. An optional built-in runner is a later milestone (see [PLAN](PL
 
 ## 2. Graph
 
-A graph holds: `title`, optional `slug`, `description`, `tags`, optional `repository`
-(`url`, `branch`, `path`), shared `context` (markdown) and `constraints` (hard rules) that
-appear in every briefing, **overall aims**, `policy` (section 14), `defaults` for nodes,
-orchestrators, nodes, edges, and loops.
+A graph holds:
+- `title`, an optional `slug`, `description`, `tags`, and an optional `repository` (`url`,
+  `branch`, `path`)
+- shared `context` (markdown) and `constraints` (hard rules) that appear in every briefing
+- **overall aims**
+- `policy` (section 14)
+- `defaults` for node fields
+- the optional top-level `evolution` settings (section 16)
+- its orchestrators, nodes, edges, and loops
+
+**Precedence for node settings**: a value on the node wins over `defaults`, which wins over
+`policy`. This applies to `maxAttempts`, `onExhausted`, and `leaseTtl`. A node's `executor`
+is shallow-merged over `defaults.executor`, so fields set on the node override, and unset
+fields inherit.
 
 ### 2.1 Status
 
@@ -79,7 +89,7 @@ stateDiagram-v2
     paused --> active: resume
     active --> verifying: all nodes done/skipped (auto)
     verifying --> completed: terminating graph aims met / waived / accepted
-    verifying --> active: graph aims unmet → "add work"
+    verifying --> active: verification escalation → "add work"
     verifying --> failed: escalation resolved as fail
     active --> failed: escalation resolved as fail / policy
     paused --> failed: escalation resolved as fail
@@ -90,10 +100,24 @@ stateDiagram-v2
     failed --> active: reopen
 ```
 
-**Stalled** is a derived condition, not a status. An `active` graph is stalled when no node is
-`ready`, `running`, or `evaluating` and at least one node is `needs_input`, `blocked`, or
-`failed`. Stalled graphs get a badge, and the server opens an `escalation` request when a
-terminally `failed` node blocks progress.
+**Stalled** is a derived condition, not a status. It is stored as `graphs.stalled` and maintained
+by the stall job. An `active` graph is stalled when:
+- no node is `ready`, `running`, or `evaluating`, and
+- at least one node is `blocked`, terminally `failed`, or in `needs_input` because of an
+  escalation.
+
+A graph that is only waiting on routine gate approvals is shown as *waiting on approval*, not
+stalled. Stalled graphs get a badge. The server opens a `stall` escalation when a terminally
+`failed` node blocks progress.
+
+**Verification.** In `verifying`, every terminating graph aim is evaluated:
+- Quantitative aims use graph-level reports or derived metrics.
+- Qualitative aims are judged by an orchestrator or a human.
+
+If all are met or waived, the graph completes. If any is unmet, the server opens a
+`verification` escalation. Its options are **add work** (the graph returns to `active` so nodes
+can be added), **waive** an aim (with justification), **accept** (completed, with
+`acceptedWithDeviation`), or **fail**.
 
 ### 2.2 Plan approval
 
@@ -110,9 +134,9 @@ until then.
 
 | Kind | Does work? | Requirements | Completes when |
 |---|---|---|---|
-| `task` | Yes, by an agent | `prompt` and ≥1 **terminating** aim | Its terminating aims are satisfied (per `aimMode`). |
-| `gate` | No, it is a decision | `gate.approver` (`human` or `orchestrator`) | The approver approves. Rejection fails it, and fires its loop if it triggers one. |
-| `milestone` | No | none | All prerequisites are done (and its own aims, if any, are met). It completes automatically. |
+| `task` | Yes, by an agent | `aim`, `prompt`, and ≥1 **terminating** aim | Its terminating aims are satisfied (per `aimMode`). |
+| `gate` | No, it is a decision | `aim` and `gate.approver` (`human` or `orchestrator`) | The approver approves. Rejection fails it, and fires its loop if it triggers one. |
+| `milestone` | No | none | All prerequisites are done or skipped, and its own aims, if any, are met. It completes automatically. If its aims are unmet, it goes to `needs_input` with an escalation. |
 | `group` *(M5)* | No, it is a container | ≥1 child | All children are done or skipped (and its own aims, if any, are met). |
 
 ### 3.2 Fields
@@ -131,8 +155,8 @@ until then.
 | `aimMode` | `all` (default) or `any`: how terminating aims combine. |
 | `needs` / `informedBy` | Authoring sugar for `requires` and `informs` edges. |
 | `priority` | `p0` (highest) to `p3`. Default `p2`. |
-| `tags` | Free-form labels. Used for orchestrator scope, filters, and capability routing. |
-| `executor` | **Recommendations** for who should run it: `role`, `model`, `thinking`, `provider`, `mechanism`, `instructions`. Also `requires`, a list of capabilities used as a **hard** filter by `next`. |
+| `tags` | Free-form labels. Used for orchestrator scope and filters. |
+| `executor` | **Recommendations** for who should run it: `role`, `model`, `thinking`, `provider`, `mechanism`, `instructions`. Also `requires`, a list of **skills** (for example `repo-write`, `staging-access`) that a claiming session must declare. It is a **hard** filter for `next` and claim. Session *skills* are distinct from orchestrator *capabilities* (§8). |
 | `maxAttempts` | Self-iteration bound per activation (section 7.1). Default comes from policy (3). |
 | `onExhausted` | `escalate` (default), `fail`, `skip`, or `accept`. |
 | `leaseTtl`, `timeout` | Lease length override; soft maximum duration per attempt (exceeding it opens an escalation). |
@@ -152,7 +176,7 @@ resets the node), `currentAttemptId`, `acceptedWithDeviation`, and timestamps.
 | `needs_input` | A decision is needed: a gate awaiting approval, or an escalation after exhaustion. | no | no |
 | `blocked` | An agent reported an external blocker. A blocking request is open. | no | no |
 | `paused` | Paused by a human or orchestrator. | no | no |
-| `done` | Terminating aims satisfied, or accepted via escalation (`acceptedWithDeviation`). | — | yes (success) |
+| `done` | Terminating aims satisfied (or waived); a gate approved; or accepted with `acceptedWithDeviation` by policy or escalation. | — | yes (success) |
 | `skipped` | Intentionally not executed, with a reason. Dependents may proceed. | — | yes (success) |
 | `failed` | Exhausted or declared failed. | — | yes (failure) |
 | `cancelled` | Its graph was cancelled. | — | yes (failure) |
@@ -176,15 +200,21 @@ stateDiagram-v2
     needs_input --> done: approved / accepted
     needs_input --> skipped: skip
     needs_input --> failed: fail
-    done --> pending: loop reset / reopen
+    done --> pending: loop reset / reopen (cascade)
+    running --> pending: loop fired (trigger)
+    evaluating --> pending: loop fired (trigger)
+    needs_input --> pending: loop fired (gate trigger rejected)
     failed --> ready: retry granted
-    pending --> paused
-    ready --> paused
-    running --> paused
-    paused --> pending: resume (recompute)
     running --> failed: exhausted (fail policy)
     evaluating --> failed: exhausted (fail policy)
+    running --> done: exhausted (accept policy)
+    running --> skipped: exhausted (skip policy)
+    paused --> running: resume (attempt still open)
+    paused --> pending: resume (no open attempt)
 ```
+
+Pausing, skipping, and failing by decision are allowed from many statuses, so they are listed in
+the actions table (§3.4) rather than drawn.
 
 Notes:
 - **Readiness.** A `pending` node becomes `ready` when the graph is `active`, the node is not
@@ -193,18 +223,48 @@ Notes:
   after every status change.
 - **Gates.** When a gate becomes ready it moves straight to `needs_input` and opens an
   `approval` request for its approver.
+- **Gate decisions** are recorded as evaluations of the gate's implicit `approval` aim (with no
+  attempt). A rejection comment and its evidence become the loop feedback when the gate triggers
+  a loop.
 - **Milestones.** When a milestone becomes ready, its aims are evaluated immediately (they are
-  usually derived metrics, or there are none) and it moves to `done`.
-- **Pausing a running node.** The node shows `paused` at once. Its attempt receives a `pause`
-  directive and should checkpoint, then release (that release is not counted). A submission
-  that arrives while paused is still accepted. On resume, the node goes back to `pending` and
-  readiness is recomputed.
-- **Skipping** requires a reason and is recorded as an event and a `decision` note.
-- **Reopening a done node** (human action) increments its `activation` and resets it to `pending`.
+  usually derived metrics, or there are none). It moves to `done`, or to `needs_input` with an
+  escalation (options: waive, add work, fail) if an aim is unmet.
+- **Pausing.**
+  - New claims stop at once, and the node shows `paused`.
+  - An open attempt receives a `pause` directive. It should checkpoint, then release; that
+    release is not counted. Its lease may still expire, and an expiry during a pause is not
+    counted either.
+  - A submission that arrives while paused is processed normally. If it passes, the node becomes
+    `done` and the pause ends. If it fails, the retry or loop decision is deferred until resume.
+  - On resume, the node returns to `running` (or `evaluating`) if an attempt is still open.
+    Otherwise it returns to `pending` and readiness is recomputed. A node never has two open
+    attempts (invariant 2).
+- **Skipping** requires a reason and is recorded as an event and a `decision` note. If an attempt
+  is open, it becomes `cancelled`.
+- **Reopening a done node** (admin action) **cascades**. The node and every descendant reachable
+  through `requires` edges that has started get `activation += 1` and go to `pending`. Their open
+  attempts become `superseded` with reason `upstream reopened`, and enclosing loops that were
+  `satisfied` become `active`. This is the only way to change prerequisites of a started node:
+  reopen it, add the edge, and readiness is recomputed.
 - **Manual completion** (admin action) records work done outside the system, for example by a
   human or before the graph was tracked. It creates an attempt executed by the caller, with
   evaluations and evidence. Terminating aims without a verdict are recorded as `waived`, with the
   summary as justification. The node becomes `done`, and the audit view marks it as manual.
+
+### 3.4 Actions by humans and orchestrators
+
+| Action | Allowed from | Effect |
+|---|---|---|
+| `pause` | pending, ready, running, evaluating, needs_input, blocked | → `paused` (see Pausing) |
+| `resume` | paused | → running / evaluating / pending (see Pausing) |
+| `skip` (reason) | pending, ready, running, evaluating, needs_input, blocked, failed | → `skipped`; open attempt → `cancelled` |
+| `retry` (+N attempts) | failed, needs_input (exhaustion) | `granted_attempts += N` → `ready` |
+| `fail` (reason) | ready, running, evaluating, needs_input, blocked | → `failed`; open attempt → `cancelled` |
+| `reopen` (admin) | done, skipped, failed | cascade reset (see above) |
+| `complete-manually` (admin) | pending, ready, needs_input, blocked, failed | → `done` (manual) |
+
+`granted_attempts` resets with each new activation. `granted_iterations` on a loop lasts for the
+loop's lifetime, unless an enclosing loop resets it.
 
 ---
 
@@ -223,14 +283,24 @@ and timestamps.
 | `running` | Lease held; work in progress. | — |
 | `submitted` | Work submitted; awaiting external evaluation. | — |
 | `passed` | Terminating aims satisfied. | — |
-| `failed` | Evaluated; terminating aims unmet. | **yes**, unless the node triggers a loop that fires instead |
+| `failed` | Evaluated; terminating aims unmet. | **yes**, unless the node is a loop trigger (the loop handles aim failures, §7.1) |
 | `errored` | The agent reported an execution error. | **yes** |
-| `abandoned` | The lease expired (counted) or the agent released voluntarily (not counted). | expired: **yes**; released: no |
+| `abandoned` | The lease expired (counted) or the agent released voluntarily (not counted). | expired: **yes** (except during a pause); released: no |
 | `blocked` | The agent stopped on an external blocker. | no |
-| `superseded` | Its result was invalidated because an enclosing loop reset the node. | no |
-| `cancelled` | The graph or node was cancelled while it was open. | no |
+| `superseded` | Its result was invalidated because the node was reset (by a loop or a reopen cascade). | no |
+| `cancelled` | The graph was cancelled, or the node was skipped or failed by decision, while the attempt was open. | no |
 
 At most one attempt per node is `running` or `submitted` at any time.
+
+**Leases apply only to `running` attempts.** A lease ends at submit, fail, block, or release. A
+`submitted` attempt holds no lease, so a worker can stop while a judge decides.
+`leaseExpiresAt` is null outside `running`.
+
+**Usage** reported in heartbeats and submissions is **cumulative for the attempt**: the latest
+report replaces the previous one. Graph and node cost are the sum of their attempts' latest usage.
+
+**`fail` with `retryable: false`** marks the task as impossible as specified. The node exhausts
+immediately and its `onExhausted` applies, with no retries.
 
 ---
 
@@ -238,7 +308,8 @@ At most one attempt per node is `running` or `submitted` at any time.
 
 - **`requires`** (from `needs`): the target cannot start until the source is done (or skipped,
   per policy). `requires` edges must form a **DAG**. The source's deliverables, summary, and
-  handoff notes appear under *Inputs* in the target's briefing.
+  handoff notes appear under *Inputs* in the target's briefing. *Inputs* covers direct
+  prerequisites only (1 hop). *Downstream consumers* reaches up to 2 hops.
 - **`informs`** (from `informedBy`): context only, never blocking. When the source has results,
   they appear under *Related context* in the target's briefing. A self-edge is invalid, and an
   `informs` edge that closes a cycle with `requires` edges produces a warning.
@@ -251,7 +322,7 @@ At most one attempt per node is `running` or `submitted` at any time.
   incoming edges' attributes under *Inputs* and outgoing edges' under *Downstream consumers*.
   The `relation` never changes scheduling; only `kind` does.
 - Prerequisites cannot be added to a node that has already started (it is `running` or later).
-  Reset the node first.
+  Reopen it first (§3.3, which cascades to its descendants), then add the edge.
 
 ---
 
@@ -308,9 +379,10 @@ Use them for useful signals such as bundle size or performance.
 - The server **computes the verdict** automatically:
   `gte: v ≥ t`, `gt: v > t`, `lte: v ≤ t`, `lt: v < t`, `eq: |v − t| ≤ 1e-9`,
   `neq: |v − t| > 1e-9`, `between: t ≤ v ≤ targetMax`.
-- A submission that is missing a value for a terminating quantitative aim is rejected
-  (`422 AIM_EVIDENCE_MISSING`) with a hint that names the metric. The agent must measure it,
-  or call `fail` if it cannot.
+- Submission completeness (see §6.5 for `aimMode`) only concerns **terminating, reported**
+  aims. Derived and non-terminating aims are never required at submit. A submission missing a
+  required value is rejected (`422 AIM_EVIDENCE_MISSING`) with a hint that names the metric. The
+  agent must measure it, or call `fail` if it cannot.
 - **Derived metrics** are computed by the server (`source: derived`):
 
 | Metric | Scope | Meaning |
@@ -320,7 +392,7 @@ Use them for useful signals such as bundle size or performance.
 | `tokens_total` | graph, node | Sum of reported tokens |
 | `elapsed_hours` | graph | Wall time since start |
 | `failed_attempts` | graph, node | Count of counted failures |
-| `open_findings_high` | graph | Unretracted findings with severity ≥ high and no resolution |
+| `open_findings_high` | graph | Findings with severity ≥ high that are neither retracted nor resolved (§9.1) |
 | `children_done_ratio` | group | (done + skipped) children / children |
 
 ### 6.4 Qualitative evaluation
@@ -334,16 +406,38 @@ The `evaluator` decides who judges:
 | `orchestrator` | An attached orchestrator with the `evaluate` capability whose scope covers the node (or the one named by `evaluatorKey`) | After submit; queued for that orchestrator. |
 | `human` | A human in the UI | After submit. Opens an `approval` request in the Inbox. |
 
+Pending `agent`-judged items are discoverable through `GET /evaluations/pending` and the
+`evaluations_pending` MCP tool, which exclude attempts the caller executed. Orchestrators also see
+them in their duty queues.
+
+**Graph aims** cannot use `self` or `agent` evaluators; only `orchestrator` or `human` judge
+them. The plain-string shorthand on a graph aim therefore expands to `evaluator: human`.
+
 An evaluation records `verdict` (`met | unmet | partial`), `rationale`, `evidence[]`, optional
 `score`, and the evaluator's execution annotation.
 
 **Independence.** When `policy.evaluation.independent` is true (the default), verdicts from
-`agent` or `orchestrator` evaluators must come from a session other than the attempt's executor.
-Otherwise the server returns `403 POLICY_DENIED`.
+`agent` or `orchestrator` evaluators must come from a session other than the attempt's executor
+**session**. Sessions created for subagents dispatched by an orchestrator are distinct child
+sessions (§10), so a judge subagent is independent of a worker subagent. Otherwise the server
+returns `403 POLICY_DENIED`.
 
 ### 6.5 Combining aims and finalizing
 
-When every terminating aim of the current attempt has a verdict:
+**Submit completeness.**
+- `aimMode: all`: every terminating `self` aim needs a verdict, and every terminating reported
+  quantitative aim needs a value.
+- `aimMode: any`: at least one terminating aim must be decidable at submit, or have an external
+  evaluator.
+
+**Short-circuits.**
+- `all`: the first unmet terminating verdict or value fails the attempt immediately, without
+  waiting for external judges.
+- `any`: the first met one passes it.
+
+Either way, evaluations still pending are cancelled.
+
+Otherwise, once every terminating aim of the current attempt has a verdict:
 
 ```
 satisfied = aimMode == 'all'
@@ -352,8 +446,11 @@ satisfied = aimMode == 'all'
 ```
 
 `satisfied` → attempt `passed`, node `done`. Otherwise the attempt is `failed` and the failure
-policy of section 7 applies. With `aimMode = any`, the attempt passes as soon as one terminating
-aim is met. Evaluations still pending at that point are cancelled.
+policy of section 7 applies.
+
+**Edits during an attempt.** If a human edits a node's aims while an attempt is open, the
+attempt is judged against the aim definitions current at **submit** time. The agent learns of the
+edit through a `change` directive, and the UI warns the editor.
 
 **Waiving.** A human (or an orchestrator with `resolve`) can waive an aim with a justification.
 Waivers are events, and they are shown prominently in the audit view.
@@ -377,15 +474,24 @@ Iteration is always **bounded**. Two mechanisms cover it.
 
 ### 7.1 Self-iteration (`maxAttempts`)
 
-A node may make up to `maxAttempts` **counted** attempts per activation (see the table in
-section 4). After a counted outcome:
+A node may make up to `maxAttempts + grantedAttempts` **counted** attempts per activation (see
+the table in section 4). After an attempt ends, apply the first matching rule:
 
-1. If the node **triggers a loop**, the outcome is `failed` (aims unmet), and the loop has
-   iterations left, then **the loop fires** (7.2). This does not consume a self-retry.
-2. Otherwise, if counted attempts < `maxAttempts`, the node returns to `ready`. The next
+1. **Loop trigger, aims unmet.** The node triggers a loop, and the outcome is `failed` (or, for
+   a gate, rejected). Aim failures of a trigger never consume self-retries.
+   - If `iteration < maxIterations + grantedIterations`, **the loop fires** (7.2).
+   - Otherwise the **loop is exhausted**: its status becomes `exhausted`, `loop.exhausted` is
+     emitted, and the **loop's** `onExhausted` applies to the trigger (7.4). There is no
+     self-retry.
+2. **Retries left.** The outcome counts (`failed` on a non-trigger, `errored`, or a counted
+   `abandoned`), and counted attempts are below the bound. The node returns to `ready`. The next
    attempt's briefing carries **feedback**: unmet aims with rationales and values for `failed`,
-   the error for `errored`, and the last checkpoint and handoff for `abandoned`.
-3. Otherwise the node is **exhausted** and `onExhausted` applies (7.4).
+   the error for `errored`, and the last checkpoint and handoff for `abandoned`. Triggers also
+   self-retry on `errored` and `abandoned` this way.
+3. **Exhausted.** A counted outcome with no retries left, or `fail` with `retryable: false`. The
+   node is **exhausted** and the **node's** `onExhausted` applies (7.4).
+4. **Uncounted outcomes** (`blocked`, released `abandoned`, `superseded`, `cancelled`) never
+   trigger retries or exhaustion on their own.
 
 ### 7.2 Loops
 
@@ -420,21 +526,29 @@ loops:
 External inputs into any body node are allowed. They are already satisfied, or are satisfied
 concurrently.
 
-**Firing.** When the trigger's attempt is `failed` (aims unmet, or a gate trigger is rejected)
-and `iteration < maxIterations`, all of the following happen in one transaction:
+**Firing.** When the trigger fails (its attempt is `failed`, or for a gate, the approval is
+rejected) and `iteration < maxIterations + grantedIterations`, all of the following happen in
+one transaction:
 
 1. `iteration += 1` and the loop is `active`.
-2. Every body node: `activation += 1`, its last passed attempt becomes `superseded`, and its
-   status becomes `pending`. Readiness is then recomputed, so `to` usually becomes `ready`.
-3. Every loop nested inside the body resets to `iteration = 1` and `idle`.
-4. **Loop feedback** is recorded: the trigger's unmet aims with values and rationales, its
-   summary, and its `finding` notes. This feedback leads the briefing for `to` and appears in
-   the briefings of every other body node in the new iteration.
-5. Events `loop.iterated` and `node.status_changed` (one per body node) are emitted.
+2. Every `done` body node, and the trigger itself, gets `activation += 1`. Its last passed
+   attempt, if any, becomes `superseded`, and its status becomes `pending`. `skipped` body nodes stay
+   skipped, because a skip is a deliberate decision with a reason. Readiness is then recomputed,
+   so `to` usually becomes `ready`.
+3. Every loop nested inside the body resets to `iteration = 1` and `idle`, and its
+   `grantedIterations` returns to 0.
+4. **Loop feedback** is recorded. For task triggers, it is the trigger's unmet aims with values
+   and rationales, its summary, and its `finding` notes. For gate triggers, it is the rejection
+   comment and its evidence. This feedback leads the briefing for `to` and appears in the
+   briefings of every other body node in the new iteration.
+5. Events `loop.iterated` and `node.status_changed` (one per reset node) are emitted.
 
-Every body node is guaranteed to be `done` when the trigger fails, because all of them are
-ancestors of the trigger. Downstream nodes outside the body have not started, by the
+When the trigger fails, every non-trigger body node is `done` or `skipped`, because all of them
+are ancestors of the trigger. Downstream nodes outside the body have not started, by the
 single-exit rule. So a reset never invalidates in-flight work.
+
+**Extending an exhausted loop** (the `extend` option of its escalation) adds
+`grantedIterations` and **fires the loop immediately**, using the latest feedback.
 
 **Nesting.** An inner loop gets a fresh iteration budget on each outer iteration, like nested
 `for` loops. The UI shows both counters.
@@ -442,9 +556,11 @@ single-exit rule. So a reset never invalidates in-flight work.
 ### 7.3 Example
 
 ```
-requirements → design → implement-api ⇄ api-tests → e2e ⇄ release-review
-                         └─ inner loop (max 4) ─┘
-               └──────────── outer loop design…release-review (max 2) ─────────┘
+requirements → design → implement-api → api-tests → e2e → release-review → ship
+                          ▲                │                     │
+                          └── api-fix ─────┘ (max 4)             │
+               ▲                                                 │
+               └──────────── release-cycle (max 2) ──────────────┘
 ```
 
 When `api-tests` fails on iteration 2/4, `implement-api` and `api-tests` reset and the loop goes
@@ -455,10 +571,10 @@ The inner loop goes back to 1/4 and the outer loop goes to 2/2.
 
 | `onExhausted` | Node (self-iteration) | Loop |
 |---|---|---|
-| `escalate` *(default)* | Node → `needs_input` with an escalation request. Options: **retry** (+N attempts), **accept** as-is (`done` with `acceptedWithDeviation`), **skip**, **fail**, **edit & retry**. | Trigger → `needs_input` with an escalation request. Options: **extend** (+N iterations), **accept**, **fail**, **edit & retry**. |
+| `escalate` *(default)* | Node → `needs_input` with an escalation request. Options: **retry** (+N attempts), **accept** as-is (`done` with `acceptedWithDeviation`), **skip**, **fail**, **edit & retry**. | Trigger → `needs_input` with an escalation request. Options: **extend** (+N iterations, fires immediately), **accept**, **fail**, **edit & retry**. |
 | `fail` | Node → `failed`. | Trigger → `failed`. |
-| `skip` | Node → `skipped` (reason: exhausted). | — |
-| `accept` | Node → `done` with `acceptedWithDeviation`. | Trigger → `done` with `acceptedWithDeviation`. |
+| `skip` | Node → `skipped` (reason: exhausted). | Not allowed for loops (a validation error). |
+| `accept` | Node → `done` with `acceptedWithDeviation`. | Trigger → `done` with `acceptedWithDeviation`. This applies to gate triggers too, and is flagged in the audit view. |
 
 A terminally `failed` node with dependents makes the graph stalled (2.1). An escalation then
 lets a human or an orchestrator retry, skip, or fail the graph.
@@ -478,7 +594,7 @@ an integrator that merges branches, and a monitor that audits proof or watches t
 | `aim`, `purpose`, `prompt` | As for nodes: what it achieves, why, and how. |
 | `scope` | `all`, `{ nodes: [...] }`, or `{ tags: [...] }`: which nodes it acts on. |
 | `capabilities` | `dispatch` (claim on behalf of subagents), `evaluate` (judge aims), `mutate` (add or modify nodes, per policy), `resolve` (resolve requests and waive aims), `approve` (approve gates assigned to orchestrators), `evolve` (record lessons and submit evolution proposals, §16). |
-| `triggers` | The event types it reacts to (for example `node.submitted`, `request.created`, `loop.exhausted`). These route notifications and feed its duty queue. |
+| `triggers` | The event types it reacts to (for example `attempt.submitted`, `request.created`, `loop.exhausted`; names from the [event catalog](data-model.md#event-catalog)). These route notifications and feed its duty queue. |
 | `aims` | Optional, informational. For example "every done node has a proof note". |
 | `executor` | Recommended model, thinking, and mechanism. |
 
@@ -492,10 +608,16 @@ ready nodes to dispatch (`dispatch`), submitted attempts awaiting its verdict (`
 requests assigned to orchestrators or to it (`resolve` and `approve`), stale leases, guard
 violations, and loop exhaustions (`resolve`).
 
-**Acting on behalf.** An orchestrator with `dispatch` can claim a node *for* a subagent. The
-attempt records `dispatchedBy`, and the subagent reports using the attempt id. Notes the
-orchestrator writes about someone else's work carry `relayedBy`, so the audit trail shows who
-did the work and who reported it.
+**Acting on behalf.** An orchestrator with `dispatch` can claim a node *for* a subagent:
+- The claim creates a **child session** for the worker's annotation, whose `parentSessionId`
+  is the orchestrator's session. The attempt is held by that child session.
+- The attempt records `dispatchedBy`, and the subagent reports using the attempt id.
+- A session heartbeat (for example from Claude Code hooks, keyed by the shared Claude
+  `session_id`) renews the leases of the session **and all its descendants**.
+- Independence checks compare sessions, so a judge subagent in another child session counts as
+  independent of the worker.
+- Notes the orchestrator writes about someone else's work carry `relayedBy`, so the audit trail
+  shows who did the work and who reported it.
 
 Orchestrator actions appear in the event log with the orchestrator as actor. In the UI they
 appear in the *orchestration lane* above the DAG.
@@ -523,7 +645,12 @@ attaches to a **node** (optionally a specific attempt), an **orchestrator**, or 
 
 Fields: `type`, `title`, `body` (markdown), `severity?`, `evidence[]`, `metrics?` (also
 recorded as metric reports), `author` (the execution annotation), `relayedBy?`, `usage?`,
-`replyTo?`, `pinned`, `retractedAt?` and `retractedReason?`.
+`replyTo?`, `pinned`, `retractedAt?` and `retractedReason?`, and for findings, `resolvedAt?` and
+`resolvedBy?`.
+
+**Resolving a finding** (`POST /notes/{id}/resolve`, with a comment) posts a reply note and
+stamps `resolvedAt`. A finding is *open* until it is resolved or retracted, which is what
+`open_findings_high` counts.
 
 **Evidence item**: `{ kind, label?, value, meta? }`. `kind` is one of `url`, `file` (path plus
 optional `repo`, `ref`, and line range), `commit` (sha plus repo and branch), `pr`, `command`
@@ -570,16 +697,18 @@ Sonnet · medium").
 ## 10. Sessions, identity, and leases
 
 - A **session** is a registered agent or human process: name, kind, role, model, thinking,
-  provider, mechanism, `clientSessionId`, and `parentSessionId`. Registering is optional. A
-  claim with an inline annotation creates or looks up the session, keyed by `clientSessionId`
-  when one is given.
-- **Leases.** Claims and orchestrator attachments take leases (default 30 min, set by
-  `policy.leaseTtl` or the node's `leaseTtl`). Leases are renewed by **attempt heartbeats** or
-  by **session heartbeats**, which renew every lease the session holds. Claude Code hooks send
-  session heartbeats on tool use, keyed by the Claude `session_id`.
-- **Sweeper.** Every 30 s the server expires leases. Expired attempts become `abandoned`
-  (counted), and the node returns to `ready` or exhausts. Sessions with no heartbeat for longer
-  than their longest lease become `lost`.
+  provider, mechanism, `skills`, `clientSessionId`, and `parentSessionId`. Registering is
+  optional. A claim with an inline annotation creates or looks up the session, keyed by
+  `clientSessionId` when one is given. A claim with `dispatchedBy` always creates a child session
+  of the orchestrator's session (§8).
+- **Leases.** Claims (for `running` attempts only) and orchestrator attachments take leases.
+  The default is 30 min, set by `policy.leaseTtl` or the node's `leaseTtl`. Leases are renewed by
+  **attempt heartbeats** or by **session heartbeats**, which renew every lease held by the
+  session and its descendant sessions. Claude Code hooks send session heartbeats on tool use,
+  keyed by the Claude `session_id`.
+- **Sweeper.** Every 30 s the server expires leases. Expired attempts become `abandoned`, which
+  counts unless the node is paused; the node then returns to `ready` or exhausts. Sessions with
+  no heartbeat for longer than their longest lease become `lost`.
 - **Trust model**: *honest but fallible agents*. API tokens keep outsiders out and assign roles
   (`admin`, `agent`, `viewer`). Within the agent role, the **attempt id is a capability**:
   whoever holds it can heartbeat, note, report, and submit for that attempt. Annotations are
@@ -601,16 +730,32 @@ The feedback loop between humans, orchestrators, and agents is explicit and audi
 
 ### 11.1 Requests
 
-| Kind | Raised by | Options and effects |
-|---|---|---|
-| `approval` | A gate becoming ready, a human-judged aim, plan approval, or (M5) a change proposal | **approve** (gate → done; aim → met; graph starts; change applied) or **reject** with comment (gate → failed, which fires its loop if any; aim → unmet; …). |
-| `question` | An agent (`question` note or request) | **answer** (free text plus optional choice). The answer becomes an `answer` directive to the asking attempt or node. |
-| `escalation` | Exhaustion, a stalled graph, a guard violation, or a timeout | **retry/extend** (+N), **accept**, **skip**, **fail**, **edit & retry**, or **resume** (for guards). |
-| `blocker` | An agent's block action | **unblock** (with info, which becomes an `answer` directive; node → ready), **skip**, **fail**. |
-
-A request has `assignee` (`human`, `orchestrator` with optional key, or `any`), `blocking`, and
-`options`. Its status is `open`, `resolved`, `dismissed`, or `expired`. Resolving it records the
+A request has a `kind`, a `subject`, an `assignee` (`human`, `orchestrator` with an optional
+key, or `any`), `blocking`, and `options`. Its status is `open`, `resolved`, `dismissed`, or
+`expired`. Resolving it (`POST /requests/{id}/resolve { choice, comment?, data? }`) records the
 choice, comment, and annotation of the resolver, then applies the effect atomically.
+
+**Option catalog.** This is the resolution contract: option ids, `data` schema, and effect.
+
+| Kind · subject | Option id → `data` → effect |
+|---|---|
+| `approval` · `gate` | `approve` → `{}` → gate `done` · `reject` → `{}` (comment required) → gate `failed`, and its loop fires if it is a trigger (§7.1) |
+| `approval` · `aim` (human-judged) | `approve` → `{ verdict?: 'met' \| 'partial' }` → evaluation recorded · `reject` → `{}` (comment required) → verdict `unmet` |
+| `approval` · `plan` | `approve` → graph starts · `reject` → graph stays `draft`, and the comment becomes a `guidance` directive on the graph |
+| `approval` · `proposal` (M5) | `approve` → proposal committed · `reject` → proposal `rejected`, into the rejection memory |
+| `question` | `answer` → `{ text, choice? }` → an `answer` directive targeting the asking attempt (or its node, if the attempt has ended) |
+| `escalation` · `exhaustion` | `retry` → `{ extraAttempts ≥ 1 }` · `accept` → `{ justification }` · `skip` → `{ reason }` · `fail` → `{ reason }` · `edit_retry` → `{ patch, extraAttempts? }` (applies a node patch, then retries) |
+| `escalation` · `loop` | `extend` → `{ extraIterations ≥ 1 }` (fires the loop immediately) · `accept` · `fail` · `edit_retry` → `{ patch, extraIterations? }` |
+| `escalation` · `guard` | `raise_target` → `{ target }` (human only, because aims are protected; the graph resumes) · `waive` → `{ justification }` (the graph resumes) · `fail`. There is no plain "resume", because an unchanged guard would re-trip at once. |
+| `escalation` · `stall` | `retry` / `skip` / `fail` → `{ nodeKey, … }` on a blocking node · `fail_graph` |
+| `escalation` · `verification` | `add_work` → graph `active` · `waive` → `{ aimKey, justification }` · `accept` → `{ justification }` (completed, `acceptedWithDeviation`) · `fail` |
+| `escalation` · `timeout` | `extend` → `{ duration }` · `fail_attempt` (counted `errored`) · `ignore` |
+| `escalation` · `milestone` | `waive` → `{ aimKey, justification }` · `add_work` · `fail` |
+| `blocker` | `unblock` → `{ info }` (an `answer` directive on the node; node → `ready`) · `skip` → `{ reason }` · `fail` → `{ reason }` |
+
+Who may resolve (§8): `approve` covers approval requests assigned to orchestrators (gates).
+`resolve` covers questions, blockers, escalations, and waivers. Edits to protected fields, such
+as `raise_target`, are human-only.
 
 ### 11.2 Directives
 
@@ -619,10 +764,17 @@ node's or graph's configuration changed), `answer` (a reply to a question or blo
 `pause`, `resume`, `cancel`.
 
 - **Targets**: `graph` (everyone working in it), `node` (the current and future attempts of that
-  node), `orchestrator`, or `session`.
-- **Lifecycle**: `pending` → `delivered` (included in a claim, briefing, or heartbeat response)
-  → `acknowledged` (the agent acked, optionally with a note on how it applied it). A directive
-  becomes `superseded` when replaced.
+  node), `attempt` (one attempt, for example an answer to its question), `orchestrator`, or
+  `session`.
+- **Lifecycle**: `pending` → `delivered` → `acknowledged`.
+  - `delivered`: included in a claim, briefing, or attempt-heartbeat response, or surfaced by a
+    hook as additional context.
+  - `acknowledged`: the agent acked, optionally with a note on how it applied it.
+  - Delivery and acknowledgment are tracked **per recipient** (`directive_deliveries`), because
+    graph and node directives reach many attempts. The directive's own status summarizes its
+    deliveries.
+  - A directive becomes `superseded` when a newer one replaces it (`supersedes`), or `expired`
+    when its optional `expiresAt` passes without acknowledgment (`directive.expired`).
 - **Persistence**: node-targeted guidance stays active for future attempts until superseded, so
   it effectively amends the node's instructions. Briefings list active directives with a rule:
   *where a directive conflicts with the prompt, the directive wins.*
@@ -643,24 +795,31 @@ progress **survive the agent**:
 1. **The graph is the memory.** Prompts, aims, decisions, attempts, checkpoints, handoffs, and
    feedback all live in the graph, not in any one agent's context.
 2. **Briefings.** `GET …/nodes/{key}/briefing?budget=N` returns a token-budgeted context packet
-   with everything an agent needs to do the node *now*. It stays **local**: the node plus a 2-hop
-   neighborhood (inputs and downstream consumers, with their edge guidance and pitfalls), never
-   the whole history. It is truncated by priority (see
+   with everything an agent needs to do the node *now*. It stays **local**: the node, its direct
+   prerequisites (*Inputs*, 1 hop), and its *Downstream consumers* (up to 2 hops), each with
+   their edge guidance and pitfalls. It never includes the whole history. It is truncated by priority (see
    [agent-protocol](agent-protocol.md#4-briefings-and-sitreps)). When `learn` mode is on, it
    includes relevant lessons. **Sitreps** do the same for orchestrators at graph level.
 3. **Checkpoints and handoffs.** Heartbeats carry a machine-readable `checkpoint`. `handoff`
    notes carry the human-readable state. Both feed the next attempt's briefing.
 4. **Leases.** Dead or stalled agents are detected and their work is recycled automatically.
-5. **Hooks** (Claude Code integration). Briefings are re-injected after compaction or resume
-   (`SessionStart`). Heartbeats ride on tool use (`PostToolUse`). Stopping with an open attempt
-   is blocked unless the agent submits, releases, or hands off (`Stop`/`SubagentStop`).
-   Compaction is recorded (`PreCompact`).
+5. **Hooks** (Claude Code integration).
+   - `SessionStart` re-injects briefings after compaction or resume.
+   - `PostToolUse` sends heartbeats on tool use.
+   - `Stop` blocks stopping with an open attempt unless the agent submits, fails, blocks, or
+     releases it (with a handoff). `SubagentStop` warns.
+   - `PreCompact` records the compaction.
 6. **Completion guards.** A node cannot be `done` without satisfying its terminating aims and
    required checklist items. A graph cannot complete until every node is `done` or `skipped`
    (with a reason) and its aims are met. Nothing is silently dropped.
-7. **Audit gaps.** The server flags done nodes without `proof` notes, aims waived without
-   justification, and attempts submitted without summaries. Monitor orchestrators get these in
-   their duty queues.
+7. **Audit gaps.** The server flags:
+   - done nodes without `proof` notes
+   - nodes accepted with deviation
+   - waived aims
+   - manual completions
+   - open high-severity findings
+
+   Monitor orchestrators get these in their duty queues.
 
 ---
 
@@ -669,12 +828,13 @@ progress **survive the agent**:
 - Every state change writes its state rows **and** one or more **events** in the same database
   transaction. An event records `type`, entity, the actor's execution annotation, `payload`
   (including before/after values for configuration edits), and `createdAt`.
-- Events are **append-only** and **hash-chained** per graph:
-  `hash = sha256(prevHash + canonicalJson(event))`. `GET /graphs/{id}/audit/verify` recomputes
-  the chain, and the UI shows the verification state.
+- Events are **append-only** and **hash-chained** per graph. The exact formula and genesis value
+  are in [data-model § Hash chain](data-model.md#hash-chain). `GET /graphs/{id}/audit/verify`
+  recomputes the chain, and the UI shows the verification state.
 - Events drive the live UI (SSE), the activity feeds, the timeline, and audit export (JSONL).
-- High-frequency heartbeats update attempt rows without writing events. An event is written only
-  when `progress` or `currentStep` changes, rate-limited to one per minute per attempt.
+- High-frequency heartbeats update attempt rows (lease, checkpoint, usage) without writing
+  events. An event is written only when `progress` or `currentStep` changes, rate-limited to one
+  per minute per attempt.
 
 ---
 
@@ -688,13 +848,15 @@ Graph-level settings, with defaults:
 | `onExhausted` | `escalate` | Default node exhaustion policy. |
 | `leaseTtl` | `30m` | Default lease length. |
 | `maxParallel` | `null` (unlimited) | Maximum concurrently running nodes. Enforced by claim and `next`. |
-| `mutations` | `append` | Structural changes after start: `locked` (admins only), `append` (agents may add nodes, edges, and loops), `open` (agents may also modify or remove nodes that have not started). `propose` (agent changes become approval requests) arrives in M5. |
+| `mutations` | `append` | Structural changes after start, made by attached orchestrators with the `mutate` capability (admins can always make them): `locked` (admins only), `append` (add nodes, edges, and loops), `open` (also modify or remove nodes that have not started). `propose` (agent changes become approval requests) arrives in M5. Workers never mutate the plan. |
 | `requirePlanApproval` | `false` | Agent-initiated `start` needs human approval. |
 | `evaluation.independent` | `true` | Judges must differ from workers. |
 | `skippedSatisfiesDeps` | `true` | A skipped prerequisite counts as satisfied. |
 | `requireProofForDone` | `false` | When true, submit is rejected unless the attempt has ≥1 `proof` note. |
 | `failFast` | `false` | When true, a terminal node failure fails the graph instead of stalling it. |
-| `evolution` | `{ mode: off }` | Optional self-evolution: `off`, `learn`, `propose`, or `auto`, with scope, protected fields, validation, and budget (§16). |
+
+Self-evolution settings are not a policy. They live in the graph's top-level `evolution` block
+(§16; [spec §7.1](spec-format.md#71-evolution-optional)), whose default is `{ mode: off }`.
 
 ---
 
@@ -705,27 +867,33 @@ The engine must maintain these. Each one becomes a property-based or table-drive
 
 1. `requires` edges form a DAG. Loop structure rules (7.2) hold after every mutation.
 2. At most one attempt per node is `running` or `submitted`.
-3. A node is `done` only if, in its current activation, its terminating aims are satisfied per
-   `aimMode` (counting `waived` as met), or it was accepted through an escalation
-   (`acceptedWithDeviation = true`). Gates: only when approved. Milestones: only when every
-   prerequisite is done or skipped.
+3. A node is `done` only if, in its current activation, one of these holds:
+   - its terminating aims are satisfied per `aimMode` (counting `waived` as met);
+   - it is a gate and was approved;
+   - `acceptedWithDeviation = true` was set by an `accept` exhaustion policy or an escalation
+     resolution;
+   - it was completed manually, with its verdicts or waivers recorded.
+
+   Milestones additionally need every prerequisite to be done or skipped, and their own aims met
+   or waived.
 4. A node is `ready` or later only if every `requires` predecessor is `done` (or `skipped`, per
-   policy), unless an explicit human override is recorded.
-5. Counted attempts per activation ≤ `maxAttempts`, and `loop.iteration` ≤ `maxIterations`.
-   Both bounds can only be raised by an explicit, evented extension.
-6. A graph is `completed` only if every node is `done` or `skipped` and every terminating graph
-   aim is met, waived, or accepted.
+   policy). Reopen cascades (§3.3) preserve this.
+5. Counted attempts per activation ≤ `maxAttempts + grantedAttempts`, and `loop.iteration` ≤
+   `maxIterations + grantedIterations`. Grants happen only through explicit, evented extensions.
+6. A graph is `completed` only if every node is `done` or `skipped`, and every terminating graph
+   aim is met or waived, or the graph was accepted through a verification escalation.
 7. Every state change has at least one event with an actor annotation, and the per-graph hash
-   chain is continuous.
+   chain is continuous. This excludes heartbeat-only updates of lease, checkpoint, and usage
+   fields (§13).
 8. Notes, evaluations, metric reports, and events are never updated or deleted. Only additive
-   retractions are allowed.
+   retraction and resolution stamps are allowed.
 9. When independence is on, an `agent` or `orchestrator` verdict never comes from the attempt's
    executor session.
 10. A loop firing resets exactly its body and its nested loops. No node outside the body changes
     status.
-11. *(With self-evolution)* No automatic edit ever changes a protected field (aims, guards,
-    policies, validation suites, gate or evolution settings). Every committed proposal passed its
-    gate and can be reverted.
+11. *(With self-evolution)* No automatic edit ever changes a protected field: aims, guards,
+    policies, validation suites, the evolution gate's configuration, or the evolution settings.
+    Every committed proposal passed its gate and can be reverted.
 
 ---
 
@@ -747,5 +915,6 @@ Graphs, templates, and briefings can improve from their own execution history. T
   candidate scores at least as well as the incumbent, ties included. Rejected proposals form a
   **rejection memory**, and identical re-proposals are refused.
 - **Protected fields** are never changed automatically: aims, guards, policies, validation
-  suites, and gate configuration.
+  suites, the evolution gate's configuration, and the evolution settings themselves. Node `gate:`
+  blocks are covered by the `topology` scope and always need approval.
 - Everything is evented, diffable, monitored for regressions, and revertible.

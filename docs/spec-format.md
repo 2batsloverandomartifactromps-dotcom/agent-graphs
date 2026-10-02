@@ -21,7 +21,7 @@ validation**.
 schema: agent-graphs/v1
 title: Add dark mode
 aims:
-  - Dark mode ships behind a user toggle and persists across reloads   # qualitative shorthand
+  - Dark mode ships behind a user toggle and persists across reloads   # shorthand; graph aims are judged by a human
 nodes:
   - key: implement
     title: Implement dark mode
@@ -35,6 +35,7 @@ nodes:
   - key: review
     title: Human design review
     kind: gate
+    aim: A human confirms both themes look right
     needs: [implement]
     gate: { approver: human, instructions: Check contrast in both themes. }
 loops:
@@ -58,7 +59,7 @@ The build plan for this repository, expressed as a graph, is in [`build-graph.ya
 | `constraints` | string[] | | Hard rules included in every briefing ("no new runtime deps without a decision note"). |
 | `aims` | Aim[] | | Overall graph aims. If omitted, `nodes_done_ratio ≥ 1` is added. |
 | `policy` | Policy | | See section 7. |
-| `defaults` | `{ executor?, tags?, maxAttempts?, onExhausted?, leaseTtl? }` | | Applied to every node unless overridden. |
+| `defaults` | `{ executor?, tags?, maxAttempts?, onExhausted?, leaseTtl? }` | | Applied to every node unless overridden. Precedence: node > `defaults` > `policy`. `executor` is shallow-merged. |
 | `orchestrators` | Orchestrator[] | | See section 6. |
 | `nodes` | Node[] | ✓ | 1–2000 nodes. |
 | `loops` | Loop[] | | See section 5. |
@@ -94,18 +95,21 @@ The build plan for this repository, expressed as a graph, is in [`build-graph.ya
     thinking: high
     provider: anthropic
     mechanism: claude-code
-    requires: [repo-write]
+    requires: [repo-write]      # skills the claiming session must declare
     instructions: Dispatch as a subagent in an isolated worktree.
   maxAttempts: 3
   onExhausted: escalate         # escalate | fail | skip | accept
   leaseTtl: 45m
   timeout: 3h
-  gate:                         # only for kind: gate
+  gate:                         # only for kind: gate (an error on other kinds)
     approver: human             # human | orchestrator
     approverKey: reviewer       # optional, a specific orchestrator
     instructions: What the approver should check.
   metadata: {}
 ```
+
+A **checklist** item may be a plain string. It normalizes to `{ key: <kebab-case of the title>,
+title, required: false }`.
 
 **Long-form edges** carry labels and procedural knowledge (edge attributes follow
 *Procedural Graphs*; see [self-evolution §6](self-evolution.md#6-procedural-knowledge-on-edges)).
@@ -156,7 +160,7 @@ Canonical form:
 
 | Shorthand | Expands to |
 |---|---|
-| `- "Toggle persists across reloads"` (a plain string) | qualitative aim, `evaluator: self`, `terminating: true` |
+| `- "Toggle persists across reloads"` (a plain string) | A qualitative, terminating aim. On a node, `evaluator: self`. On the graph, `evaluator: human`, because graph aims can't be self-judged. |
 | `- check: "coverage >= 0.8"` | quantitative: `metric: coverage, comparator: gte, target: 0.8` |
 | `- check: "p95_ms < 200"` | `comparator: lt` (operators `>= > <= < == !=`) |
 | `- check: "bundle_kb in [100, 250]"` | `comparator: between, target: 100, targetMax: 250` |
@@ -164,6 +168,12 @@ Canonical form:
 The shorthand grammar is `metric (>=|>|<=|<|==|!=) number` or `metric in [number, number]`,
 where metric names match `^[a-z][a-z0-9_.]*$`. A `check` can be combined with other fields
 (`title`, `evaluator`, …).
+
+**Derived titles and keys.** When omitted, an aim's `title` defaults to its `check` string.
+Its `key` is derived from the title: lowercase, every run of characters other than `[a-z0-9]`
+(underscores and dots included) becomes `-`, leading and trailing hyphens are trimmed, and the
+result is truncated to 64 characters. Collisions within the owner get `-2`, `-3`, and so on.
+For example, `check: "test_pass_rate >= 1"` gets the key `test-pass-rate-1`.
 
 ## 5. Loops (failure-cycles)
 
@@ -174,7 +184,7 @@ loops:
     from: api-tests             # ✓ trigger node
     to: implement-api           # ✓ entry node
     maxIterations: 4            # total passes incl. the first (default 3; 1–50)
-    onExhausted: escalate       # escalate (default) | fail | accept
+    onExhausted: escalate       # escalate (default) | fail | accept  (skip is invalid for loops)
     feedback: Include failing test names and the first error of each.   # what to carry forward
 ```
 
@@ -187,14 +197,14 @@ rules in [concepts §7.2](concepts.md#72-loops) are enforced.
 orchestrators:
   - key: lead                   # ✓
     name: Lead orchestrator     # ✓
-    role: lead                  # lead | reviewer | integrator | monitor | custom
+    role: lead                  # lead | reviewer | integrator | monitor | evolver | custom
     aim: Drive the graph to completion within budget
     purpose: Keeps every stage moving and documented across context resets
     prompt: |
       You are the lead. Loop: sitrep → dispatch ready nodes to subagents → …
     scope: all                  # all | { nodes: [a, b] } | { tags: [code] }
-    capabilities: [dispatch, evaluate, mutate, resolve, approve]
-    triggers: [node.submitted, request.created, loop.exhausted]
+    capabilities: [dispatch, evaluate, mutate, resolve, approve]   # + evolve (evolver role)
+    triggers: [attempt.submitted, request.created, loop.exhausted]   # event catalog names
     aims:
       - title: Every done node has a proof note
         terminating: false
@@ -238,14 +248,19 @@ evolution:
     minRuns: 5                 # per arm for live A/B
     maxRounds: 10
     maxOpsPerProposal: 5
-  objective:                   # weights (defaults shown in self-evolution.md §9)
-    graphSuccess: 0.4
+  objective:                   # weights (defaults; see self-evolution.md §9)
+    graphSuccess: 0.40
     firstPassYield: 0.25
+    loopIterations: 0.10       # inverse
+    humanInterventions: 0.10   # inverse
+    cost: 0.10                 # inverse, normalized
+    wallTime: 0.05             # inverse, normalized
   budget: { costUsd: 10 }
 ```
 
-Protected fields (aims, guards, policy, validation suites, gate and evolution settings) can never
-appear in `scope`. See [self-evolution §5](self-evolution.md#5-what-may-evolve).
+Protected fields can never appear in `scope`: aims, guards, policy, validation suites, the
+evolution gate's configuration, and the evolution settings. See
+[self-evolution §5](self-evolution.md#5-what-may-evolve).
 
 ## 8. Validation
 
@@ -265,25 +280,34 @@ issue looks like this:
 - Duplicate `key`s among nodes, loops, orchestrators, or aims (within an owner).
 - References to unknown nodes in `needs`, `informedBy`, loops, `scope`, or `evaluatorKey`.
 - A cycle among `requires` edges (the error reports the cycle path), or a self-dependency.
-- A `task` without a `prompt` or without a terminating aim. A `gate` without `gate.approver`.
+- A `task` without `aim`, without `prompt`, or without a terminating aim. A `gate` without `aim`
+  or without `gate.approver`. A `gate:` block on a node that isn't a gate.
+- A graph aim with `evaluator: self` or `agent`. Graph aims are judged by an orchestrator or a
+  human.
+- `evaluator: orchestrator` (or `gate.approver: orchestrator`) without a key, when no
+  orchestrator has the `evaluate` (or `approve`) capability.
 - A quantitative aim missing `metric`, `comparator`, or `target`; `between` without `targetMax`;
   `targetMax < target`.
 - An unknown derived metric (`source: derived` with a metric not in the catalog).
 - Loop rules: `from == to`; `from` unreachable from `to`; partially overlapping bodies; a node
   triggering more than one loop; a `requires` edge leaving a body from a node other than the
-  trigger; `maxIterations` outside 1–50.
+  trigger; `maxIterations` outside 1–50; `onExhausted: skip`.
 - `maxAttempts` outside 1–20.
 - `evaluatorKey` or `approverKey` naming a missing orchestrator, or one without the
   `evaluate`/`approve` capability.
 - An edge `relation` outside `leads_to | triggers | provides_input_for | converges_to`.
-- `evolution.mode: auto` without `validation.suite`, or `evolution.scope` containing an unknown
-  or protected class. `evolution.mode` other than `off` with `approval: orchestrator` but no
-  orchestrator holding `resolve`.
+- Evolution settings that can't work:
+  - `evolution.mode: auto` without `validation.suite`.
+  - A `validation.ladder` containing `replay` or `ab` without `validation.suite`.
+  - `evolution.scope` containing an unknown or protected class.
+  - `evolution.mode` other than `off` with `approval: orchestrator`, but no orchestrator holding
+    `resolve`.
 
 **Warnings**
 - A node without `purpose`. A gate without `instructions`.
 - An `informs` edge leaving a loop body, or closing a cycle with `requires` edges.
-- An orchestrator scope that matches no nodes.
+- An orchestrator scope that matches no nodes. An orchestrator `triggers` entry that isn't an
+  event type in the [catalog](data-model.md#event-catalog).
 - No graph aims (the default aim is added).
 - An unknown model, provider, or mechanism (not in the vocabulary, but accepted).
 - A prompt longer than 20k characters.

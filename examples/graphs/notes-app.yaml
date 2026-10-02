@@ -288,7 +288,7 @@ nodes:
       Review the auth design, data access rules, and the staging environment configuration.
       File findings with severity. Requires read access to staging (credentials via env).
     aims:
-      - check: "open_high_findings == 0"
+      - check: "security_findings_high == 0"
       - title: Auth and data-access rules reviewed against OWASP ASVS L1
         evaluator: orchestrator
         evaluatorKey: reviewer

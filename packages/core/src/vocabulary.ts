@@ -133,13 +133,16 @@ export const EVOLUTION_SCOPES = [
 ] as const;
 export type EvolutionScope = (typeof EVOLUTION_SCOPES)[number];
 
-/** Never edited automatically; any proposal touching these needs human approval. */
+/**
+ * Never edited automatically; any proposal touching these needs human approval.
+ * `evolutionGate` is the evolution gate's configuration, not node `gate:` blocks (topology scope).
+ */
 export const EVOLUTION_PROTECTED = [
   'aims',
   'guards',
   'policy',
   'validationSuites',
-  'gate',
+  'evolutionGate',
   'evolution',
 ] as const;
 
@@ -164,6 +167,30 @@ export type ValidationStage = (typeof VALIDATION_STAGES)[number];
 export const REQUEST_KINDS = ['approval', 'question', 'escalation', 'blocker'] as const;
 export type RequestKind = (typeof REQUEST_KINDS)[number];
 
+/** Option catalog per subject: docs/concepts.md §11.1. */
+export const REQUEST_SUBJECTS = [
+  'gate',
+  'aim',
+  'plan',
+  'proposal',
+  'exhaustion',
+  'loop',
+  'guard',
+  'stall',
+  'verification',
+  'milestone',
+  'timeout',
+  'question',
+  'blocker',
+] as const;
+export type RequestSubject = (typeof REQUEST_SUBJECTS)[number];
+
+export const REQUEST_STATUSES = ['open', 'resolved', 'dismissed', 'expired'] as const;
+export type RequestStatus = (typeof REQUEST_STATUSES)[number];
+
+export const REQUEST_ASSIGNEES = ['human', 'orchestrator', 'any'] as const;
+export type RequestAssignee = (typeof REQUEST_ASSIGNEES)[number];
+
 export const DIRECTIVE_KINDS = [
   'guidance',
   'change',
@@ -174,7 +201,89 @@ export const DIRECTIVE_KINDS = [
 ] as const;
 export type DirectiveKind = (typeof DIRECTIVE_KINDS)[number];
 
+export const DIRECTIVE_TARGETS = ['graph', 'node', 'attempt', 'orchestrator', 'session'] as const;
+export type DirectiveTarget = (typeof DIRECTIVE_TARGETS)[number];
+
+export const DIRECTIVE_STATUSES = [
+  'pending',
+  'delivered',
+  'acknowledged',
+  'superseded',
+  'expired',
+] as const;
+export type DirectiveStatus = (typeof DIRECTIVE_STATUSES)[number];
+
+export const AIM_MODES = ['all', 'any'] as const;
+export type AimMode = (typeof AIM_MODES)[number];
+
+export const AIM_SOURCES = ['reported', 'derived'] as const;
+export type AimSource = (typeof AIM_SOURCES)[number];
+
+export const AGGREGATIONS = ['latest', 'min', 'max', 'avg', 'sum'] as const;
+export type Aggregation = (typeof AGGREGATIONS)[number];
+
+export const VERDICTS = ['met', 'unmet', 'partial', 'waived'] as const;
+export type Verdict = (typeof VERDICTS)[number];
+
+/** Server-computed metrics usable with `source: derived` (docs/concepts.md §6.3). */
+export const DERIVED_METRICS = [
+  'nodes_done_ratio',
+  'cost_usd',
+  'tokens_total',
+  'elapsed_hours',
+  'failed_attempts',
+  'open_findings_high',
+  'children_done_ratio',
+] as const;
+export type DerivedMetric = (typeof DERIVED_METRICS)[number];
+
+export const PRIORITIES = ['p0', 'p1', 'p2', 'p3'] as const;
+export type Priority = (typeof PRIORITIES)[number];
+
+export const GATE_APPROVERS = ['human', 'orchestrator'] as const;
+export type GateApprover = (typeof GATE_APPROVERS)[number];
+
+/** Loops accept every exhaustion policy except `skip`. */
+export const LOOP_EXHAUSTION_POLICIES = ['escalate', 'fail', 'accept'] as const;
+export type LoopExhaustionPolicy = (typeof LOOP_EXHAUSTION_POLICIES)[number];
+
+export const MUTATION_POLICIES = ['locked', 'append', 'open'] as const;
+export type MutationPolicy = (typeof MUTATION_POLICIES)[number];
+
+export const ORCHESTRATOR_STATUSES = ['idle', 'active', 'paused', 'stopped'] as const;
+export type OrchestratorStatus = (typeof ORCHESTRATOR_STATUSES)[number];
+
+export const SESSION_STATUSES = ['active', 'idle', 'ended', 'lost'] as const;
+export type SessionStatus = (typeof SESSION_STATUSES)[number];
+
+export const ANNOTATION_KINDS = ['agent', 'human', 'system'] as const;
+export type AnnotationKind = (typeof ANNOTATION_KINDS)[number];
+
+export const EVIDENCE_KINDS = [
+  'url',
+  'file',
+  'commit',
+  'pr',
+  'command',
+  'metric',
+  'image',
+  'text',
+  'artifact',
+] as const;
+export type EvidenceKind = (typeof EVIDENCE_KINDS)[number];
+
+export const TOKEN_ROLES = ['admin', 'agent', 'viewer'] as const;
+export type TokenRole = (typeof TOKEN_ROLES)[number];
+
 /** Suggested (open) vocabularies for execution annotations. Any string is accepted. */
+export const KNOWN_MODELS = [
+  'claude-fable-5-1',
+  'claude-opus-5-5',
+  'claude-sonnet-5-5',
+  'claude-haiku-4-5',
+  'gpt-5',
+  'gemini-2.5-pro',
+] as const;
 export const THINKING_LEVELS = ['off', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
 export const PROVIDERS = [
   'anthropic',

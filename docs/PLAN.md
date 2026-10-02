@@ -67,17 +67,21 @@ Because all state lives in the graph rather than in any one agent's context wind
 *Scenario: building a notes app ([`examples/graphs/notes-app.yaml`](../examples/graphs/notes-app.yaml)).*
 
 1. **Plan.** The user asks their main Claude Code session (Opus, high thinking) to build a notes
-   app. The session runs the `/plan` MCP prompt, drafts a spec with 14 nodes, two loops, a
-   budget guard aim, and lead and reviewer orchestrators, then validates it and creates it.
-   Policy requires plan approval, so an approval request appears in the **Inbox**.
-2. **Human review.** The user opens the graph in the UI, sees the DAG with its loop regions,
-   tightens one prompt, raises a coverage target, and approves. The graph becomes `active`.
+   app. The session runs the `/plan` MCP prompt. It drafts a spec with 16 nodes, two loops, a
+   budget guard aim, and lead, reviewer, and auditor orchestrators, then validates it and creates
+   it as a **draft**. It then requests `start`. Policy requires plan approval, so an approval
+   request appears in the **Inbox** instead.
+2. **Human review.** The user opens the graph in the UI and sees the DAG with its loop regions.
+   They tighten one prompt, raise a coverage target, and approve. The graph becomes `active`.
 3. **Dispatch.** The session attaches as orchestrator `lead` and reads the **sitrep**:
-   `requirements` is ready. It claims the node on behalf of a subagent (Sonnet, medium), spawns
-   the subagent with the briefing and attempt id, and the subagent works, heartbeating
-   automatically through hooks. It posts a `deliverable` note (commit) and a `proof` note
-   (doc lint output), self-evaluates its qualitative aim, and submits. The node is `done`, and
-   `architecture` becomes ready.
+   `requirements` is ready.
+   - The lead claims the node on behalf of a subagent (Sonnet, medium), which creates a child
+     session, then spawns the subagent with the briefing and attempt id.
+   - The subagent works, heartbeating automatically through hooks. It posts a `deliverable` note
+     (commit) and a `proof` note (doc lint output), then submits.
+   - The node's qualitative aim is judged by the `reviewer` orchestrator, so the node is
+     `evaluating` until the reviewer's verdict (met) arrives.
+   - The node is `done`, and `architecture` becomes ready.
 4. **Gate.** `plan-review` is a human gate. The user approves it from the Inbox. Two branches
    become ready and run in parallel (bounded by `maxParallel`).
 5. **Failure-cycle.** `api-tests` reports `test_pass_rate = 0.92` against a target of `≥ 1`.
@@ -175,7 +179,8 @@ Planning docs, a high-fidelity UI mockup, example specs, the build graph, the mo
 - **Done when**: the simulator completes the notes-app example end to end, including at least
   one loop iteration and one escalation; MCP tool tests pass; **a real Claude Code session
   completes a node over MCP**, with proof recorded; the compaction re-injection and Stop-block
-  hooks are verified.
+  hooks are verified. Until M5 packaging, MCP is configured through the repo-local bin
+  (`node <repo>/packages/cli/bin/agraph.js mcp`).
 - **Self-evolution E1 (learn mode)**: lessons storage and API, lesson duties on
   passing-after-failure, `lesson_add` and `lessons_search` MCP tools, edge-attribute endpoints,
   and briefing integration. Done when a simulated failure-cycle produces a lesson that appears,
@@ -193,7 +198,8 @@ Planning docs, a high-fidelity UI mockup, example specs, the build graph, the mo
 
 ### M5: Depth and hardening
 Timeline/Gantt; the Aims tab with metric charts; groups and node expansion (hierarchy); graph
-revisions and diffs; templates; FTS search UI; attachments; change proposals
+revisions and diffs; basic templates (store a spec and instantiate it); FTS search UI;
+attachments; change proposals
 (`mutations: propose`); webhooks; audit export and verify UI; secret redaction; a Docker image;
 remote token-auth UX; a `/metrics` endpoint; `npx agent-graphs` packaging; third-party notices.
 **Self-evolution E2 (propose)**: the evolver role, evolution packet, edit DSL proposals,

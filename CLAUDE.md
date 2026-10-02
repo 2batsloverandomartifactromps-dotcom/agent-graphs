@@ -57,7 +57,8 @@ node packages/cli/bin/agraph.js --help   # CLI from source
   components by hand on `radix-ui` (the shadcn registry isn't reachable from cloud sessions).
   Status is never shown by color alone.
 - **Self-evolution** is optional and off by default. Never let automatic edits touch protected
-  fields (aims, guards, policy, validation suites, gate or evolution settings).
+  fields: aims, guards, policy, validation suites, the evolution gate's configuration, or the
+  evolution settings.
 
 ## Dependencies and licensing
 - The project is `MIT OR Apache-2.0`. **Only permissively licensed dependencies are allowed.**

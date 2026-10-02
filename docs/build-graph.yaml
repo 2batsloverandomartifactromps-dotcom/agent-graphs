@@ -120,10 +120,12 @@ nodes:
     prompt: |
       Implement packages/core/src/schemas/* and src/spec/schema.ts per docs/concepts.md,
       docs/data-model.md (entity shapes), docs/spec-format.md (spec syntax incl. shorthands as
-      preprocessors) and docs/api.md (request/response DTOs). Export inferred types. Add
-      packages/core/src/vocab.ts (models, providers, mechanisms, thinking levels with display names).
+      preprocessors) and docs/api.md (request/response DTOs). Export inferred types. Derive every
+      enum from packages/core/src/vocabulary.ts (extend it where the docs define more closed
+      vocabularies), and add display metadata (friendly model names, icons, provider tints) for
+      GET /vocab in packages/core/src/vocab-display.ts, importing from vocabulary.ts.
       Add a script that emits the JSON Schema for specs to packages/core/dist-schema/graph-spec.schema.json.
-    deliverables: [packages/core/src/schemas/, packages/core/src/spec/schema.ts, packages/core/src/vocab.ts]
+    deliverables: [packages/core/src/schemas/, packages/core/src/spec/schema.ts, packages/core/src/vocab-display.ts]
     aims:
       - check: "typecheck_errors == 0"
       - key: matches-docs

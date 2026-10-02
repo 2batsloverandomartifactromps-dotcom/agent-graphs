@@ -142,10 +142,18 @@ Graph-level `evolution.mode` (templates have their own):
 | `executor` | Recommended model or thinking per node, based on cost and first-pass yield |
 | `topology` | Add or remove nodes, edges, and loops; split a node; insert a verification node; change `maxAttempts` or `maxIterations` |
 
-**Protected (never automatic):** aims (targets, comparators, evaluators, `terminating`), guard
-aims, policies (including evaluation independence), validation suites, gate configuration, and
-`evolution` settings. An edit that touches these always requires human approval. Loosening a
-target is the easiest way to "improve" a score, so it is never automatic (R12).
+**Protected (never automatic):**
+- aims (targets, comparators, evaluators, `terminating`)
+- guard aims
+- policies (including evaluation independence)
+- validation suites
+- the **evolution gate's** configuration (its objective weights, constraints, and sample
+  minimums)
+- the `evolution` settings
+
+An edit that touches these always requires human approval. Loosening a target is the easiest way
+to "improve" a score, so it is never automatic (R12). Node `gate:` blocks are not protected
+fields, but changing them belongs to the `topology` scope.
 
 ## 6. Procedural knowledge on edges
 
@@ -166,9 +174,10 @@ These edge attributes are useful with or without evolution:
   - `requires` into a milestone, or a gate with ≥ 2 inputs → `converges_to`
   - `informs` → `provides_input_for`
   - Loop back-edges → `triggers`
-- **Briefings** render incoming edges' attributes under *Inputs*, and outgoing edges' under a new
-  *Downstream consumers* section ("who uses your output, and what they need"). Both are
-  2-hop, per R2.
+- **Briefings** render incoming edges' attributes under *Inputs* (direct prerequisites, 1 hop).
+  Outgoing edges' attributes go under a new *Downstream consumers* section ("who uses your
+  output, and what they need"), which reaches up to 2 hops. Together they form the local
+  neighborhood of R2.
 - Attributes are authored by humans, by agents (a `decision` or `handoff` can suggest them), or
   appended by `learn` mode. Each appended item carries provenance.
 
@@ -206,7 +215,8 @@ type Lesson = {
   - Ranking: scope match (edge > node key > template > tags/kind > global), then helpfulness
     `(helpful + 1) / (applied + 2)`, then recency.
   - The section is capped at about 10% of the budget and labelled with provenance and stats.
-- **Counters.** Including a lesson in a briefing increments `applied`.
+- **Counters.** Including a lesson in the briefing of a **claimed attempt** increments `applied`
+  once, recorded in `lesson_applications`. UI previews never count.
   - The evolver (acting as reflector, like ACE) tags outcomes `helpful` or `harmful`.
   - The server also tracks passive pass rates with and without each lesson.
   - Lessons with `harmful > helpful` and `applied ≥ 5` are flagged for retirement.
@@ -242,8 +252,8 @@ A proposal is a list of typed operations, validated as one batch:
 | Op | Payload |
 |---|---|
 | `add_node` / `delete_node` | Node spec / key |
-| `add_edge` / `delete_edge` | `{from, to, kind, relation?, condition?, guidance?, pitfalls?}` |
-| `set_edge_attributes` | `{from, to, condition?, guidance?, pitfalls?}` (append or replace) |
+| `add_edge` / `delete_edge` | `{from, to, kind, relation?, condition?, guidance?, pitfalls?}` (in a spec, an edge is identified by `from`, `to`, and `kind`) |
+| `set_edge_attributes` | `{from, to, kind, condition?, guidance?, pitfalls?, mode: append | replace}` |
 | `set_node_field` | `{key, field: prompt | purpose | checklist | executor | maxAttempts | priority, delta}` |
 | `add_loop` / `delete_loop` / `set_loop` | Loop spec / key / `{maxIterations, onExhausted}` |
 | `add_lesson` / `merge_lessons` / `retire_lesson` | Lesson payloads |
@@ -252,11 +262,14 @@ As in PG, a *revision* may be expressed as delete plus add. The server normalize
 edit sets hash the same.
 
 ### 8.4 Proposal lifecycle
+Statuses match `PROPOSAL_STATUSES` and [data-model](data-model.md#self-evolution-tables-optional-self-evolutionmd):
 ```
-proposed → checked (structural + protected) → [duplicate of rejected? → refused]
-        → validating (ladder) → gate → committed  ──► monitored (auto-revert on regression)
-                                     └──► rejected ──► rejection memory
+proposed → checking (structural + protected) ──► refused   (same hash as a rejected proposal)
+         → validating (ladder) → awaiting_approval (when required) → committed ──► reverted
+                                                                   └──► rejected ──► rejection memory
 ```
+After a commit, monitoring watches for regressions and auto-reverts (→ `reverted`). An edit that
+was reverted may be proposed again; one that was *rejected* may not.
 A proposal records:
 - `target`: a live graph revision or a template version
 - `ops`
@@ -318,8 +331,9 @@ be limited to the tiers where it validated.
 
 ## 10. Templates, lineage, and reliability (E3)
 
-- A **template** is a reusable procedural graph (a spec) with **versions**. Graph instances
-  record their template version, so every run is a trace for its version.
+- A **template** is a reusable procedural graph (a spec). **Basic templates ship in M5**: store a
+  spec and instantiate graphs from it. **E3 adds versions**. Graph instances record their template
+  version, so every run is a trace for its version.
 - **Lineage** is a tree of versions (an archive, as in DGM and ADAS) with scores, decisions,
   diffs, and authorship (human or evolver). The default for new instances is the best gated
   version; exploration can select parents by score plus novelty. Revert takes one click.
@@ -361,7 +375,7 @@ be limited to the tiers where it validated.
 |---|---|
 | Spec ([spec-format](spec-format.md)) | Edge long-form fields `relation`, `condition`, `guidance`, `pitfalls`; top-level and template `evolution` block; node `procedure` (E4) |
 | Data ([data-model](data-model.md)) | `edges` columns for relation and attributes; tables `lessons`, `lesson_applications`, `evolution_proposals`, `evolution_validations`, `templates`, `template_versions`, `eval_suites`, `eval_runs`; event families `lesson.*`, `proposal.*`, `template.*`, `eval.*` |
-| API ([api](api.md)) | `/lessons`, `/graphs/{g}/evolution/*` (proposals, validate, decide, revert), `/templates/*` (versions, lineage, reliability), `/eval-suites/*`, `/eval-runs` |
+| API ([api](api.md)) | `/lessons` (+ duties), `/graphs/{g}/edges/{id}/attributes`, `/graphs/{g}/evolution` (status, packet, proposals), `/evolution/proposals/{id}/…` (validate, decide, revert), `/templates/*` (versions, lineage, reliability), `/eval-suites`, `/eval-runs` |
 | Protocol ([agent-protocol](agent-protocol.md)) | Briefing sections *Lessons & pitfalls* and *Downstream consumers*; the submit response may ask for a lesson; the evolver loop; MCP tools `lesson_add`, `lessons_search`, `evolution_queue`, `proposal_create`, `proposal_validate`, `eval_report` |
 | UI ([ui](ui.md)) | An **Evolution** tab (lessons, proposals with diff and contrastive traces, validation ladder, lineage, rejection memory, settings); a lessons panel in the node inspector; edge attribute popovers; a reliability view |
 

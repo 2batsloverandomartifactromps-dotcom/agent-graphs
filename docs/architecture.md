@@ -244,8 +244,8 @@ pre-installed Playwright Chromium) is added in M4. Releases (M5) tag, bundle wit
 
 The built-in **runner** (M6; launches agents for ready nodes through the Claude Agent SDK or
 headless Claude Code, with concurrency and budget limits), **webhooks** (M5), a **Postgres**
-repository implementation, **OIDC** login, **"Ask this graph"** Q&A over the audit log (M6), and
-templates (M5).
+repository implementation, **OIDC** login, **"Ask this graph"** Q&A over the audit log (M6), basic
+**templates** (M5), and versioned templates with lineage (self-evolution E3, M6).
 
 ## 12. Tech stack
 

@@ -9,8 +9,8 @@ Semantics are defined in [concepts.md](concepts.md). This document defines persi
 - **IDs** are prefixed ULIDs (lexicographically time-sortable): `gr_` graph, `nd_` node,
   `ed_` edge, `lp_` loop, `am_` aim, `at_` attempt, `ev_` evaluation, `mt_` metric report,
   `nt_` note, `or_` orchestrator, `se_` session, `rq_` request, `dr_` directive, `tk_` token,
-  `evt_` event; optional self-evolution adds `ls_` lesson, `ep_` proposal, `tp_` template, `es_`
-  eval suite. Author-facing **keys** (node, loop, orchestrator, aim) are kebab-case and unique
+  `evt_` event; optional self-evolution adds `ls_` lesson, `ld_` lesson duty, `ep_` proposal,
+  `tp_` template, `es_` eval suite. Author-facing **keys** (node, loop, orchestrator, aim) are kebab-case and unique
   within their scope. The API addresses nodes as `/graphs/{graphIdOrSlug}/nodes/{nodeKey}`.
 - **Times** are stored as `INTEGER` epoch milliseconds and returned by the API as ISO-8601 UTC.
 - **JSON** columns are `TEXT` holding JSON (Drizzle `text({ mode: 'json' })`) and typed with the
@@ -63,6 +63,9 @@ erDiagram
 | `context` | TEXT | Shared briefing context. |
 | `policy` | JSON | Fully resolved policy (defaults applied). |
 | `defaults` | JSON | Node defaults. |
+| `evolution` | JSON | Top-level self-evolution settings (`{ mode: 'off' }` by default). |
+| `stalled` | INT | Derived flag maintained by the stall job. |
+| `accepted_with_deviation` | INT | Completed through a verification escalation's `accept`. |
 | `metadata` | JSON | |
 | `source_spec` | JSON | Normalized spec as created (provenance). Exports are rebuilt from the tables. |
 | `revision` | INT | Incremented on every structural mutation. |
@@ -159,7 +162,8 @@ JSON (who or what authored or appended each attribute), `version`, `created_at`,
 | `session_id` | TEXT NULL | |
 | `executor` | JSON | Execution annotation of the worker. |
 | `dispatched_by` | JSON NULL | Annotation of the orchestrator that claimed on the worker's behalf. |
-| `lease_expires_at`, `last_heartbeat_at` | INT | |
+| `lease_expires_at` | INT NULL | Set only while `running`; cleared at submit, fail, block, or release. |
+| `last_heartbeat_at` | INT NULL | |
 | `progress` | INT NULL | 0–100 |
 | `current_step` | TEXT NULL | |
 | `checkpoint` | JSON NULL | ≤ 64 KB |
@@ -198,7 +202,8 @@ JSON, `created_at`. Indexes: `(aim_id, created_at)`, `(attempt_id)`.
 | `relayed_by` | JSON NULL | |
 | `usage` | JSON NULL | |
 | `pinned` | INT | |
-| `retracted_at`, `retracted_reason`, `retracted_by` | NULL | The only mutable columns. |
+| `retracted_at`, `retracted_reason`, `retracted_by` | NULL | Mutable stamps (additive only). |
+| `resolved_at`, `resolved_by`, `resolution_note_id` | NULL | Findings only: set by `POST /notes/{id}/resolve`. |
 | `created_at` | INT | |
 
 Indexes: `(graph_id, created_at)`, `(node_id, created_at)`, `(graph_id, type)`. Full-text search
@@ -213,27 +218,34 @@ uses the FTS5 table `notes_fts(title, body)` (external content, synced by trigge
 ### `sessions`
 `id` (`se_…`), `kind` (`agent | human | system`), `name`, `role`, `provider`, `model`,
 `thinking`, `thinking_budget`, `mechanism`, `version`, `client_session_id`,
-`parent_session_id`, `token_id`, `capabilities` JSON, `meta` JSON, `status`
+`parent_session_id` (child sessions for dispatched subagents), `token_id`, `skills` JSON (matched
+against node `executor.requires`), `meta` JSON, `status`
 (`active | idle | ended | lost`), `usage` JSON, `started_at`, `last_seen_at`, `ended_at`.
 Indexes: `(client_session_id)`, `(status, last_seen_at)`.
 
 ### `requests`
 `id` (`rq_…`), `graph_id`, `node_id` NULL, `attempt_id` NULL, `aim_id` NULL, `kind`
-(`approval | question | escalation | blocker`), `subject` (`gate | aim | plan | exhaustion |
-loop | guard | stall | timeout | question | blocker | proposal`), `title`, `body`, `options`
+(`approval | question | escalation | blocker`), `subject` (`gate | aim | plan | proposal |
+exhaustion | loop | guard | stall | verification | milestone | timeout | question | blocker`;
+the option catalog per subject is in [concepts §11.1](concepts.md#111-requests)), `title`, `body`, `options`
 JSON (`[{id, label, description?, effect}]`), `assignee` (`human | orchestrator | any`),
 `assignee_key` NULL, `blocking` INT, `status` (`open | resolved | dismissed | expired`),
 `created_by` JSON, `resolution` JSON NULL (`{choice, comment?, data?}`), `resolved_by` JSON NULL,
 `created_at`, `resolved_at`, `expires_at` NULL. Indexes: `(status, graph_id)`, `(node_id)`.
 
 ### `directives`
-`id` (`dr_…`), `graph_id`, `target_type` (`graph | node | orchestrator | session`),
+`id` (`dr_…`), `graph_id`, `target_type` (`graph | node | attempt | orchestrator | session`),
 `target_id`, `kind` (`guidance | change | answer | pause | resume | cancel`), `title`, `body`,
-`data` JSON (for example the config diff), `requires_ack` INT, `status`
-(`pending | delivered | acknowledged | superseded | expired`), `request_id` NULL, `created_by`
-JSON, `created_at`, `delivered_at`, `delivered_to` JSON (`{attemptId?, sessionId?}`),
-`acked_at`, `acked_by` JSON, `ack_note`, `superseded_by` NULL. Index:
+`data` JSON (for example the config diff), `requires_ack` INT, `status` (an aggregate:
+`pending | delivered | acknowledged | superseded | expired`), `request_id` NULL, `supersedes`
+NULL, `expires_at` NULL, `created_by` JSON, `created_at`. Index:
 `(graph_id, target_type, target_id, status)`.
+
+### `directive_deliveries`
+One row per recipient: PK `(directive_id, recipient)`, where `recipient` is an attempt id or a
+session id. Columns: `delivered_at`, `delivered_via` (`claim | briefing | heartbeat | hook`),
+`acked_at`, `acked_by` JSON, `ack_note`. Graph-wide and persistent node directives reach many
+attempts, so delivery and acknowledgment are tracked here.
 
 ### `events`
 | Column | Type | Notes |
@@ -254,7 +266,8 @@ Indexes: `(graph_id, seq)`, `(entity_type, entity_id, seq)`, `(type, seq)`.
 - `api_tokens`: `id`, `name`, `role` (`admin | agent | viewer`), `token_hash` (sha256),
   `prefix` (for display), `created_by`, `created_at`, `last_used_at`, `revoked_at`.
 - `idempotency_keys`: PK `(token_id, key)`, `method`, `path`, `request_hash`, `status_code`,
-  `response_body`, `created_at`. Purged after 24 h.
+  `response_body`, `created_at`. Purged after 24 h. In `AUTH_MODE=local`, requests without a
+  token use the sentinel `token_id = 'local'`.
 - `settings`: server key/value (`key` PK, `value` JSON).
 - *(M5)* `graph_revisions`: PK `(graph_id, revision)`, `spec` JSON, `summary`, `actor`,
   `created_at`.
@@ -270,11 +283,17 @@ Indexes: `(graph_id, seq)`, `(entity_type, entity_id, seq)`, `(type, seq)`.
   `author` JSON, `created_at`, `updated_at`. Indexes on `(status)` and on the extracted scope
   keys (generated columns `scope_template`, `scope_node_key`).
 - **`lesson_applications`** (E1): `(lesson_id, attempt_id)` PK, `outcome` (`passed | failed |
-  pending`), `tag` (`helpful | harmful | null`, set by the evolver), `created_at`. This is the
-  basis for the counters and for the with/without pass-rate statistics.
+  pending`), `tag` (`helpful | harmful | null`, set by the evolver), `created_at`. It is written
+  once per **claimed attempt** (at claim time), never for UI previews. This is the basis for the
+  counters and for the with/without pass-rate statistics.
+- **`lesson_duties`** (E1): `id` (`ld_…`), `graph_id`, `node_id`, `passed_attempt_id`,
+  `failed_attempt_ids` JSON, `status` (`open | fulfilled | dismissed`), `lesson_id` NULL (once
+  fulfilled), `assignee` (`worker | evolver`), `created_at`, `closed_at`.
 - **`evolution_proposals`** (E2): `id` (`ep_…`), `target_type` (`graph | template`),
   `target_id`, `base_revision` (graph revision or template version), `ops` JSON (edit DSL),
-  `canonical_hash` (UNIQUE per target; enforces the rejection memory), `rationale`, `evidence`
+  `canonical_hash` (non-unique index on `(target_type, target_id, canonical_hash)`; the command
+  refuses a proposal whose hash matches a **rejected** one for the same target, records it as
+  `refused`, and allows re-proposing edits that were committed and later reverted), `rationale`, `evidence`
   JSON, `expected_effect`, `risk_class` (`guidance | structure | protected`), `status`
   (`proposed | checking | validating | awaiting_approval | committed | rejected | refused |
   reverted`), `decision` JSON (gate inputs, scores, reasons), `committed_revision` NULL,
@@ -282,9 +301,10 @@ Indexes: `(graph_id, seq)`, `(entity_type, entity_id, seq)`, `(type, seq)`.
 - **`evolution_validations`** (E2): `id`, `proposal_id`, `stage` (`structural | counterfactual |
   replay | ab | human`), `split` (`validation | test` NULL), `score_candidate`,
   `score_incumbent`, `samples`, `details` JSON, `judge` JSON (annotation), `created_at`.
-- **`templates`**, **`template_versions`** (E3): a template has `key`, `title`, `current_version`.
-  A version holds `spec` JSON, `parent_version`, `status` (`candidate | active | retired |
-  rejected`), `scores` JSON (by split and model tier), `created_by`, `created_at`. Graphs record
+- **`templates`** (basic, M5) and **`template_versions`** (E3). A template has `key`, `title`,
+  and `current_version`. In M5 it holds a single spec that you instantiate. E3 adds versions,
+  each with `spec` JSON, `parent_version`, `status` (`candidate | active | retired | rejected`),
+  `scores` JSON (by split and model tier), `created_by`, and `created_at`. Graphs record
   `template_id` and `template_version`.
 - **`eval_suites`**, **`eval_runs`** (E3): a suite has tasks with automatic scorers or rubric
   judges, split into `validation` and `test`. Runs record `suite_id`, `split`,
@@ -300,14 +320,14 @@ Indexes: `(graph_id, seq)`, `(entity_type, entity_id, seq)`, `(type, seq)`.
 | loop | `loop.created`, `loop.updated`, `loop.removed`, `loop.iterated` (`{iteration, feedbackSummary}`), `loop.satisfied`, `loop.exhausted`, `loop.extended` |
 | aim | `aim.created`, `aim.updated`, `aim.removed`, `aim.evaluated` (`{verdict, value?, evaluatorKind}`), `aim.waived`, `aim.guard_violated` |
 | attempt | `attempt.claimed`, `attempt.progress` (rate-limited), `attempt.checklist_updated`, `attempt.submitted`, `attempt.passed`, `attempt.failed`, `attempt.errored`, `attempt.blocked`, `attempt.abandoned` (`{reason: lease_expired | released}`), `attempt.superseded`, `attempt.cancelled` |
-| note | `note.created`, `note.retracted` |
+| note | `note.created`, `note.retracted`, `note.resolved` |
 | metric | `metric.reported` (batched per call) |
 | orchestrator | `orchestrator.created`, `orchestrator.updated`, `orchestrator.attached`, `orchestrator.detached`, `orchestrator.lease_expired`, `orchestrator.status_changed`, `orchestrator.dispatched` (`{nodeKey, attemptId, target}`) |
 | session | `session.registered`, `session.updated`, `session.ended`, `session.lost`, `session.compacted` |
 | request | `request.created`, `request.resolved`, `request.dismissed`, `request.expired` |
-| directive | `directive.created`, `directive.delivered`, `directive.acknowledged`, `directive.superseded` |
+| directive | `directive.created`, `directive.delivered` (per recipient), `directive.acknowledged` (per recipient), `directive.superseded`, `directive.expired` |
 | edge (attributes) | `edge.attributes_updated` (`{before, after, provenance}`) |
-| lesson *(optional)* | `lesson.duty_created`, `lesson.created`, `lesson.merged`, `lesson.revised`, `lesson.retired`, `lesson.applied`, `lesson.tagged` |
+| lesson *(optional)* | `lesson.duty_created`, `lesson.duty_fulfilled`, `lesson.duty_dismissed`, `lesson.created`, `lesson.merged`, `lesson.revised`, `lesson.retired`, `lesson.applied`, `lesson.tagged` |
 | proposal *(optional)* | `proposal.created`, `proposal.refused` (duplicate of a rejected proposal), `proposal.validated` (per stage), `proposal.approved`, `proposal.committed`, `proposal.rejected`, `proposal.reverted` |
 | template / eval *(optional)* | `template.version_created`, `template.version_activated`, `template.version_retired`, `eval.run_reported` |
 

@@ -56,11 +56,14 @@ and agents spawned as **subagents** by an orchestrator. Semantics are in
    trade-offs. Write a `handoff` before anything that might lose your context. Report metrics as
    soon as you measure them.
 5. **Finish with exactly one of these:**
-   - `attempt_submit { summary, metrics, evaluations }`. Include verdicts for every
-     `self`-evaluated aim and values for every quantitative aim. The server rejects incomplete
-     submissions with a hint. The outcome is `passed`, `failed` (unmet; you will see why), or
-     `evaluating` (a judge or human will decide; you may stop).
-   - `attempt_fail { reason }` when you cannot complete it (it counts as an attempt).
+   - `attempt_submit { summary, metrics, evaluations }`. Include verdicts for every terminating
+     `self`-evaluated aim and values for every terminating reported quantitative aim (with
+     `aimMode: any`, one decidable aim is enough). Derived and non-terminating aims are never
+     required. The server rejects incomplete submissions with a hint. The outcome is `passed`,
+     `failed` (unmet; you will see why), or `evaluating` (a judge or human will decide; your
+     lease ends and you may stop).
+   - `attempt_fail { reason }` when you cannot complete it (it counts as an attempt). Add
+     `retryable: false` if the task is impossible as specified, so it escalates immediately.
    - `attempt_block { reason, request }` for an external blocker that needs a human (not
      counted).
    - `attempt_release { reason, handoff }` when you must stop early (not counted).
@@ -238,34 +241,42 @@ states; recent significant events; and **rule-based suggested next actions**. Pa
 ## 7. Interfaces: MCP, CLI, REST
 
 ### 7.1 MCP server
-- **stdio**: `npx -y agent-graphs mcp` (configured with `AGENT_GRAPHS_URL` and
-  `AGENT_GRAPHS_TOKEN`).
+- **stdio**: `agraph mcp`, configured with `AGENT_GRAPHS_URL` (the server origin) and
+  `AGENT_GRAPHS_TOKEN`. Until npm packaging lands in M5, run it from a checkout with
+  `node <repo>/packages/cli/bin/agraph.js mcp`. After that, `npx -y agent-graphs mcp`.
 - **Streamable HTTP**: `http://<server>/mcp`, for remote agents and connectors.
-- **Profiles** keep tool definitions small: `--profile worker` (the work tools only),
-  `orchestrator`, or `all` (default).
+- **Profiles** keep tool definitions small. Each profile includes the previous rows' tools as
+  noted:
+  - `worker`: the "worker" tools.
+  - `orchestrator`: the worker and orchestrator tools.
+  - `evolver`: the worker and evolver tools.
+  - `all`: everything (the default).
+
+  A tool marked **any** is available in every profile.
 
 | Tool | Profile | Purpose |
 |---|---|---|
-| `graphs_list` | all | List graphs (`status`, `q`). |
-| `graph_sitrep` | all | Situation report (markdown, budgeted). |
-| `node_briefing` | worker | Briefing for a node or attempt. |
-| `work_next` | worker | Pick (and claim) the best ready node. |
+| `graphs_list` | any | List graphs (`status`, `q`). |
+| `graph_sitrep` | any | Situation report (markdown, budgeted). |
+| `node_briefing` | worker | Briefing for a node, or for an attempt (`GET /attempts/{a}/briefing`). |
+| `work_next` | worker | Pick (and claim) the best ready node, or with `role: reviewer`, a pending evaluation. |
 | `node_claim` | worker | Claim a specific node (orchestrators: on behalf, with `dispatchedBy`). |
-| `attempt_heartbeat` | worker | Progress, step, checkpoint, usage, checklist ticks. Returns directives and flags. |
+| `attempt_heartbeat` | worker | Progress, step, checkpoint, cumulative usage, checklist ticks. Returns directives and flags. |
 | `note_add` | worker | Add a note to an attempt, node, orchestrator, or graph. |
 | `metrics_report` | worker | Report metric values. |
 | `attempt_submit` | worker | Submit with summary, self-evaluations, and metrics. |
 | `attempt_fail` · `attempt_block` · `attempt_release` | worker | Finish without passing. |
 | `request_create` | worker | Ask a question or request approval (blocking or not). |
 | `directive_ack` | worker | Acknowledge a directive, with a note. |
-| `graph_validate` · `graph_create` | orchestrator | Author graphs from specs. |
-| `graph_mutate` · `node_update` | orchestrator | Change the plan (policy-checked). |
-| `node_control` | orchestrator | Pause, resume, skip, retry, or reopen. |
-| `orchestrator_attach` · `orchestrator_queue` | orchestrator | Take a role; get duties. |
-| `aim_evaluate` | orchestrator | Judge a submitted attempt's aim. |
-| `request_resolve` · `directive_send` | orchestrator | Close the loop with workers. |
+| `evaluations_pending` · `aim_evaluate` | worker | Find and judge attempts awaiting an independent (`agent`) verdict. |
 | `lesson_add` · `lessons_search` | worker | Record or look up lessons (`learn` mode). |
-| `evolution_queue` · `proposal_create` · `proposal_validate` · `eval_report` | evolver | Self-evolution duties, gated proposals, validation results (optional). |
+| `graph_validate` · `graph_create` | orchestrator | Author graphs from specs. |
+| `graph_mutate` · `node_update` | orchestrator | Change the plan (requires `mutate`; policy-checked). |
+| `node_control` | orchestrator | Pause, resume, skip, fail, or retry (requires `resolve`). Reopen needs an admin token. |
+| `orchestrator_attach` · `orchestrator_heartbeat` · `orchestrator_detach` · `orchestrator_queue` | orchestrator | Take, keep, and hand off a role; get duties. |
+| `request_resolve` · `directive_send` · `aim_waive` | orchestrator | Close the loop with workers (option ids per [concepts §11.1](concepts.md#111-requests)). |
+| `audit_gaps` | orchestrator | Proof and deviation gaps (for monitor roles). |
+| `evolution_queue` · `lessons_curate` · `proposal_create` · `proposal_validate` · `eval_report` | evolver | Self-evolution duties, lesson curation (merge, tag, retire), gated proposals, validation results (optional). |
 
 **MCP prompts** (these appear as slash commands in Claude Code): `work` (graph),
 `orchestrate` (graph, orchestrator), `review` (graph), and `plan` (goal → draft a spec, validate
@@ -280,7 +291,8 @@ One binary serves, bridges MCP, runs hooks, and acts as a client:
 
 ```
 agraph serve [--port 4747 --host 127.0.0.1 --data ./data]
-agraph mcp [--profile worker|orchestrator|all]
+agraph health [--url URL]                       # check a server is reachable
+agraph mcp [--profile worker|orchestrator|evolver|all]
 agraph login --url URL --token TOKEN
 agraph graphs [--status active]               agraph graph create -f spec.yaml [--start]
 agraph graph validate -f spec.yaml            agraph graph export <graph> [--json]
@@ -290,7 +302,7 @@ agraph brief <graph> <node> | --attempt <id>
 agraph hb <attempt> [--progress 60 --step "…" --checkpoint @cp.json]
 agraph note <attempt> --type proof --title "API tests 50/50" --evidence 'cmd:pnpm test api=0'
 agraph metric <attempt> test_pass_rate=1 coverage=0.91
-agraph submit <attempt> --summary "…" --eval 'layering=met:Handlers are thin'
+agraph submit <attempt> --summary "…" --eval 'handles-errors=met:All handlers use the error envelope'
 agraph fail|block|release <attempt> --reason "…"
 agraph ask <graph> [--node key] "Should notes be soft-deleted?"
 agraph inbox [--graph g]                      agraph resolve <request> --choice approve [--comment "…"]
@@ -320,13 +332,15 @@ The files live in `integrations/claude-code/` (built in M3).
     "command": "npx", "args": ["-y", "agent-graphs", "mcp"],
     "env": { "AGENT_GRAPHS_URL": "http://localhost:4747", "AGENT_GRAPHS_TOKEN": "${AGENT_GRAPHS_TOKEN}" } } } }
 ```
+Before M5 packaging, use `"command": "node", "args": ["<repo>/packages/cli/bin/agraph.js", "mcp"]`.
 
 ### 8.2 Hooks (`.claude/settings.json`)
 | Hook | Command | Behavior |
 |---|---|---|
 | `SessionStart` (startup, resume, compact, clear) | `agraph hook session-start` | Reads the hook JSON (`session_id`, `source`). If this Claude session holds attempts or orchestrator roles: on `compact` or `resume`, injects the **briefing or sitrep** as additional context; on `startup`, injects a one-line reminder. Otherwise, with `AGENT_GRAPHS_GRAPH` set, it injects a short sitrep. |
-| `PostToolUse` (`*`) | `agraph hook heartbeat` | A throttled (≥60 s) session heartbeat by `clientSessionId`. It renews every lease the session holds. It is fast and never blocks the tool. |
-| `Stop`, `SubagentStop` | `agraph hook stop` | If the session holds open attempts with no submit or release, it returns `{"decision":"block","reason":"You hold attempt at_… on implement-api. Submit, release with a handoff, or fail it before stopping."}`. It respects `stop_hook_active` to avoid loops, and `AGENT_GRAPHS_STOP_POLICY`. |
+| `PostToolUse` (`*`) | `agraph hook heartbeat` | A throttled (≥60 s) session heartbeat by `clientSessionId`. It renews every lease held by the session and its child sessions (dispatched subagents). When the response carries new directives, it surfaces them as additional context (where the hook API supports it) and marks them `delivered` via `hook`. It is fast and never blocks the tool. |
+| `Stop` | `agraph hook stop` | If the session tree holds `running` attempts, it returns `{"decision":"block","reason":"You hold attempt at_… on implement-api. Submit, fail, block, or release it (with a handoff) before stopping."}`. It respects `stop_hook_active` to avoid loops, and `AGENT_GRAPHS_STOP_POLICY`. |
+| `SubagentStop` | `agraph hook stop --subagent` | **Warn only**: it lists open attempts dispatched from this session. Hook input can't reliably tell which subagent is stopping, so blocking would hit sibling subagents. |
 | `PreCompact` | `agraph hook pre-compact` | Records a `session.compacted` event. `SessionStart(compact)` restores the briefing afterwards. |
 
 ### 8.3 Skill
@@ -347,8 +361,11 @@ spawn Task(prompt = briefing + "You are executing   → works; attempt_heartbeat
   attempt_submit before you stop.")
 on return: verify the attempt state; relay and submit if the subagent didn't
 ```
-Subagents share the parent's Claude `session_id`, so the parent's hooks keep the lease alive while
-any of them uses tools.
+The claim creates a **child session** (parent: the lead's session) for the subagent's annotation.
+Subagents share the parent's Claude `session_id`, and session heartbeats renew the leases of the
+whole session tree, so the parent's hooks keep every dispatched lease alive while any of them
+uses tools. Child sessions also keep independence checks honest: a judge subagent in its own
+child session is independent of the worker.
 
 ## 9. Other runtimes
 - **Claude Agent SDK** agents: mount the MCP server (stdio or HTTP), or call `@agent-graphs/sdk`

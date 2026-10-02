@@ -2,7 +2,7 @@
 schema: agent-graphs/v1
 title: Add dark mode
 aims:
-  - Dark mode ships behind a user toggle and persists across reloads   # qualitative shorthand (self-judged)
+  - Dark mode ships behind a user toggle and persists across reloads   # shorthand; graph aims are judged by a human
 nodes:
   - key: implement
     title: Implement dark mode

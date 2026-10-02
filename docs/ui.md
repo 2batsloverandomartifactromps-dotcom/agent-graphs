@@ -34,7 +34,7 @@ this document disagree on behavior, this document wins. On look and feel, the mo
 | `/graphs` | **Graphs**: all graphs, with saved views Active · Needs attention · Completed · Failed · Drafts · Archived |
 | `/graphs/new` | **New graph**: from a spec (YAML editor + validation + live preview), from a template (M5), or blank |
 | `/graphs/$graph` | **Graph workspace**, Canvas tab |
-| `/graphs/$graph/timeline` · `/aims` · `/notes` · `/activity` · `/agents` · `/spec` · `/evolution` · `/settings` | Workspace tabs (Evolution only when enabled) |
+| `/graphs/$graph/timeline` · `/aims` · `/notes` · `/activity` · `/agents` · `/spec` · `/evolution` · `/settings` | Workspace tabs. Timeline and Aims ship in M5; Evolution only appears when enabled (E1 lessons, E2 proposals). |
 | `/graphs/$graph/nodes/$node?tab=notes` | Canvas with the node inspector open (deep link) |
 | `/graphs/$graph/orchestrators/$key` | Canvas with the orchestrator inspector open |
 | `/inbox` | **Inbox**: approvals, questions, escalations, blockers across graphs |
@@ -77,10 +77,10 @@ when applicable.
 
 **Tabs**
 - **Canvas** (default, section 5).
-- **Timeline**: Gantt-style swimlanes per node (toggle: per agent session). Attempts are bars
+- **Timeline** *(M5)*: Gantt-style swimlanes per node (toggle: per agent session). Attempts are bars
   colored by outcome, loop iterations are bracketed, there is a now-line, and zoom runs from
   minutes to days. It shows parallelism, idle gaps, and rework at a glance.
-- **Aims**: graph aims as large cards (evidence, history). A node-aims matrix (rows are nodes,
+- **Aims** *(M5)*: graph aims as large cards (evidence, history). A node-aims matrix (rows are nodes,
   columns are aims, cells are verdicts). **Metric charts**: value per attempt and iteration
   with the target line (for example test pass rate across loop iterations).
 - **Notes**: every note in the graph with facets (type, severity, model, provider, mechanism,
@@ -160,7 +160,7 @@ editing enabled.
   `pitfalls`, plus provenance (authored or learned). An optional **reliability view** (E3) sets
   edge opacity and width from historical success contribution.
 
-### 5.2 Node card (about 240 × 104 px at 100% zoom)
+### 5.2 Node card (232 px wide, about 140–175 px tall at 100% zoom)
 ```
 ┌─────────────────────────────────────────────┐
 │▌ ◉ Running            implement-api   2/3 ↺ │  status icon+label · mono key · attempts · loop mark
@@ -213,14 +213,16 @@ amber, waived = slate with a strike).
 ### 6.2 Typography and layout
 Inter (variable) for UI and JetBrains Mono for keys, ids, code, and metrics, both self-hosted
 through `@fontsource-variable` (OFL-1.1). Sizes: 12/13/14 px UI text, 16/18/20 px headings,
-tabular numbers for metrics. 4 px spacing grid. Radii of 6 (controls), 10 (cards), and 14
-(panels). Hairline borders. Sparing, soft elevation.
+tabular numbers for metrics. 4 px spacing grid. Radii: 4 (tags), 6 (chips), 8 (buttons and
+inputs), 10 (node and orchestrator cards), 12 (panels), pill (999), and 18 (loop regions).
+Hairline borders. Sparing, soft elevation.
 
 ### 6.3 Execution annotation badges
 `[Opus 5.5 ▮▮▮▮ ⌘]`: the friendly model name (from `/vocab`; unknown models show their raw id),
 a **thinking meter** (0–5 bars for off/low/medium/high/xhigh/max), and a **mechanism icon**
-(terminal = claude-code, cloud = claude-code-web, braces = agent-sdk, plug = mcp, user = ui,
-gear = system). The tint comes from the provider family, using neutral generic tints (no brand
+(terminal = claude-code, cli, codex, gemini-cli; cloud = claude-code-web; braces =
+claude-agent-sdk; `</>` = api, claude-api; plug = mcp; user = ui). Annotations with
+`kind: system` show a gear. The tint comes from the provider family, using neutral generic tints (no brand
 logos). The tooltip shows the full annotation including session and usage.
 
 ### 6.4 Motion
@@ -234,8 +236,87 @@ canvas nodes ("implement-api, running, attempt 2 of 3, 64 percent"), the Table a
 the canvas, and color-blind-safe redundancy (icons and patterns).
 
 ### 6.6 Mockup tokens
-*Filled in from the final mockup. See the mockup's `:root` and `[data-theme="light"]` blocks;
-they are the source of truth until `tokens.css` exists.*
+These values come from the mockup. Its `:root` and `[data-theme="light"]` blocks are the source of
+truth until `tokens.css` exists.
+
+**Surfaces (dark / light):**
+
+| Token | Dark | Light |
+|---|---|---|
+| bg | `#0b0c0f` | `#f6f6f8` |
+| bg-elev | `#0e0f13` | `#fbfbfc` |
+| panel | `#111317` | `#ffffff` |
+| card | `#15171c` | `#ffffff` |
+| card-2 | `#1b1e24` | `#f3f4f6` |
+| card-3 | `#23262e` | `#e9eaee` |
+| lines | white at 7 / 11 / 17% | `rgb(17,20,32)` at 8 / 12 / 20% |
+
+**Text, accent, and edges (dark / light):**
+
+| Token | Dark | Light |
+|---|---|---|
+| text | `#ececef` | `#17181c` |
+| text-2 | `#a6a9b2` | `#4f525b` |
+| text-3 | `#80848e` | `#666a74` |
+| accent (indigo) | `#7c7ff7` | `#5b5cf0` |
+| primary button | `#6366f1` | `#4f46e5` |
+| accent text | `#a5a7ff` | `#4f46e5` |
+| edges | `#3a3e48` | `#c3c6ce` |
+| edges between done nodes | `#4a505c` | `#aeb2bc` |
+| informs edges | `#5b606c` | `#a3a7b1` |
+
+Indigo (the accent) is reserved for selection, loops, and dispatch. Violet is used only for
+`running`.
+
+**Status palette.** "Vivid" is for icons, stripes, and segments; "text" is for labels on a
+tinted background.
+
+| Status | Dark vivid / text | Light vivid / text |
+|---|---|---|
+| pending | `#8e8e98` / `#b1b1ba` | `#8b8b94` / `#5d5e66` |
+| ready | `#38bdf8` / `#5cc8f9` | `#0b94d8` / `#036394` |
+| running | `#a78bfa` / `#b9a2fb` | `#7c3aed` / `#6527d4` |
+| evaluating | `#fbbf24` / `#fbc84a` | `#d97706` / `#94480a` |
+| needs_input | `#fb923c` / `#fca15a` | `#ea580c` / `#b03a0a` |
+| blocked | `#f87171` / `#f98b8b` | `#dc2626` / `#b91c1c` |
+| paused | `#8794a8` / `#a3afc0` | `#64748b` / `#4b5868` |
+| done | `#34d399` / `#4fdcaa` | `#059669` / `#04704f` |
+| failed | `#fb7185` / `#fc8a9b` | `#e11d48` / `#be123c` |
+| skipped | `#6b6b74` / `#9d9da6` | `#a1a1aa` / `#5d5e66` |
+| cancelled | `#55555e` / `#94949d` | `#52525b` / `#45454d` |
+
+- The tint background is the vivid color at 13% (dark) or 9% (light). Pill outlines are at 24%.
+  Every status text clears 5.4:1 on its tint.
+- Other states reuse these colors:
+  - emerald: met, passed, satisfied, completed
+  - rose: unmet, exhausted
+  - amber: partial, submitted, verifying
+  - zinc: waived, superseded, abandoned, idle, draft
+  - red: errored
+  - running violet: graph `active`
+
+**Type.**
+- Inter with features `cv11 ss01 ss03`.
+- Sizes: 11 (eyebrow, uppercase, +0.06em, weight 600), 12 (secondary and chips), 13 (body,
+  line-height 1.45), 14 (card and node titles, weight 600), 16 (drawer title), 18 (graph title),
+  20 (page title), 26 (KPI values).
+- JetBrains Mono at 11–12 px, with `font-variant-ligatures: none`.
+
+**Layout.**
+- Top bar 48 px. Sidebar 224 px, or a 56 px icon rail in the graph workspace.
+- Inspector 420 px. Orchestration lane 62 px.
+- Node cards are 232 px wide. Columns are 276 px apart, with wider gutters where edges fan out.
+
+**Model badge.**
+- A 16 px monogram tile tinted by provider (O, S, H, G; a person glyph for humans), then the
+  model name, then a 5-bar thinking meter (max lights in accent), then the mechanism icon.
+- Provider tints are low-chroma so they never read as a status: anthropic `#d4a27f` /
+  `#b9774b`, openai `#8fbfaa` / `#3f8f6e`, google `#93a9dc` / `#4f6fbf`, human `#c3c4cc` /
+  `#8a8c96`.
+- There are two forms: a bordered 22 px chip, and a compact 11 px inline line for note footers.
+
+**Charts.** Categorical order blue, orange, aqua, yellow: dark `#3987e5 #d95926 #199e70
+#c98500`, light `#2a78d6 #eb6834 #1baf7a #eda100`. Status colors are never used for series.
 
 ## 7. Feedback loop UX
 - **Edits** to running nodes show a banner: "An agent is working on this node. Saving sends a
