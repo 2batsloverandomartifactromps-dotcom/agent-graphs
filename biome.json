@@ -12,7 +12,8 @@
       "!**/drizzle",
       "!docs/design",
       "!**/routeTree.gen.ts",
-      "!.claude/worktrees"
+      "!.claude/worktrees",
+      "!**/dist-schema"
     ]
   },
   "formatter": {
