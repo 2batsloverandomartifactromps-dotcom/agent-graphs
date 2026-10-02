@@ -25,7 +25,7 @@ import {
   resolveGraphId,
 } from '../context';
 import { appendEvents, loadState } from '../db/repo';
-import { graphs, notes, requests, sessions } from '../db/schema';
+import { attempts, graphs, nodes, notes, orchestrators, requests, sessions } from '../db/schema';
 import {
   annotationOf,
   createSession,
@@ -569,6 +569,64 @@ export function inboxRoutes(api: Api, app: AppContext): void {
     (c, { params }) => {
       getSession(app, params.id as string);
       return respond(c, sessionHeartbeat(params.id as string));
+    },
+  );
+  api.route(
+    {
+      method: 'get',
+      path: '/sessions/by-client/:clientSessionId',
+      summary: 'Read-only lookup: session, held attempts, and orchestrator roles (for hooks)',
+      tag: 'sessions',
+      role: 'agent',
+    },
+    (c, { params }) => {
+      const row = sessionByClientId(app, params.clientSessionId as string);
+      if (!row) return respond(c, { session: null, attempts: [], orchestrators: [] });
+      const ids = sessionTree(app, row.id);
+      const held = app.db
+        .select({
+          id: attempts.id,
+          graphId: attempts.graphId,
+          nodeId: attempts.nodeId,
+          status: attempts.status,
+          leaseExpiresAt: attempts.leaseExpiresAt,
+          sessionId: attempts.sessionId,
+        })
+        .from(attempts)
+        .where(
+          and(inArray(attempts.sessionId, ids), inArray(attempts.status, ['running', 'submitted'])),
+        )
+        .all();
+      const nodeKeys = new Map(
+        held.length
+          ? app.db
+              .select({ id: nodes.id, key: nodes.key })
+              .from(nodes)
+              .where(
+                inArray(
+                  nodes.id,
+                  held.map((a) => a.nodeId),
+                ),
+              )
+              .all()
+              .map((n) => [n.id, n.key])
+          : [],
+      );
+      const roles = app.db
+        .select({
+          graphId: orchestrators.graphId,
+          key: orchestrators.key,
+          status: orchestrators.status,
+          leaseExpiresAt: orchestrators.leaseExpiresAt,
+        })
+        .from(orchestrators)
+        .where(eq(orchestrators.sessionId, row.id))
+        .all();
+      return respond(c, {
+        session: { ...row, annotation: annotationOf(row) },
+        attempts: held.map((a) => ({ ...a, nodeKey: nodeKeys.get(a.nodeId) })),
+        orchestrators: roles,
+      });
     },
   );
   api.route(

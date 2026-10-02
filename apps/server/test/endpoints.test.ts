@@ -428,6 +428,9 @@ describe('structure, orchestrators, inbox, notes, sessions, tokens', () => {
     expect(
       (await s.call<Obj>('POST', '/sessions/by-client/unknown/heartbeat', {})).body.session,
     ).toBeNull();
+    const lookup = await s.call<Obj>('GET', '/sessions/by-client/cc-worker-1');
+    expect(lookup.body.attempts.map((a: Obj) => a.nodeKey)).toEqual(['requirements']);
+    expect((await s.call<Obj>('GET', '/sessions/by-client/unknown')).body.session).toBeNull();
     expect(
       (await s.call<Obj>('POST', `/sessions/${sid}/events`, { type: 'compacted' })).body.ok,
     ).toBe(true);

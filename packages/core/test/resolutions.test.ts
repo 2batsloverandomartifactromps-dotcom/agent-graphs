@@ -260,6 +260,17 @@ describe('other request subjects', () => {
     expect(h2.state.graph.status).toBe('failed');
   });
 
+  it('retries a rejected gate with a fresh approval request', () => {
+    const h = new Harness(spec([task('a'), gate('g', ['a']), task('b', ['g'])]));
+    h.pass('a');
+    h.resolve(h.openRequests('gate')[0] as E.HumanRequest, 'reject', { comment: 'not yet' });
+    expect(h.status('g')).toBe('failed');
+    h.resolve(h.openRequests('stall')[0] as E.HumanRequest, 'retry', { data: { nodeKey: 'g' } });
+    expect(h.node('g')).toMatchObject({ status: 'needs_input', activation: 2 });
+    h.resolve(h.openRequests('gate')[0] as E.HumanRequest, 'approve');
+    expect(h.status('b')).toBe('ready');
+  });
+
   it('handles milestone escalations', () => {
     const milestone = (target: number) =>
       new Harness(

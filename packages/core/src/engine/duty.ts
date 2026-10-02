@@ -108,7 +108,7 @@ export function dutyQueue(state: GraphState, orchestratorId: string, now: number
       title: r.title,
       requestId: r.id,
       ...(node ? { nodeKey: node.key } : {}),
-      hint: `request_resolve { id: "${r.id}", choice: ${r.options.map((o) => `"${o.id}"`).join(' | ')} }`,
+      hint: `request_resolve { requestId: "${r.id}", choice: ${r.options.map((o) => `"${o.id}"`).join(' | ')} }`,
     });
   }
   if (can.has('resolve') || can.has('dispatch')) {
