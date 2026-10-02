@@ -366,6 +366,7 @@ export const EVENT_TYPES = [
   'metric.reported',
   'orchestrator.created',
   'orchestrator.updated',
+  'orchestrator.removed',
   'orchestrator.attached',
   'orchestrator.detached',
   'orchestrator.lease_expired',

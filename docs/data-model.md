@@ -322,7 +322,7 @@ Indexes: `(graph_id, seq)`, `(entity_type, entity_id, seq)`, `(type, seq)`.
 | attempt | `attempt.claimed`, `attempt.progress` (rate-limited), `attempt.checklist_updated`, `attempt.submitted`, `attempt.passed`, `attempt.failed`, `attempt.errored`, `attempt.blocked`, `attempt.abandoned` (`{reason: lease_expired | released}`), `attempt.superseded`, `attempt.cancelled` |
 | note | `note.created`, `note.retracted`, `note.resolved` |
 | metric | `metric.reported` (batched per call) |
-| orchestrator | `orchestrator.created`, `orchestrator.updated`, `orchestrator.attached`, `orchestrator.detached`, `orchestrator.lease_expired`, `orchestrator.status_changed`, `orchestrator.dispatched` (`{nodeKey, attemptId, target}`) |
+| orchestrator | `orchestrator.created`, `orchestrator.updated`, `orchestrator.removed`, `orchestrator.attached`, `orchestrator.detached`, `orchestrator.lease_expired`, `orchestrator.status_changed`, `orchestrator.dispatched` (`{nodeKey, attemptId, target}`) |
 | session | `session.registered`, `session.updated`, `session.ended`, `session.lost`, `session.compacted` |
 | request | `request.created`, `request.resolved`, `request.dismissed`, `request.expired` |
 | directive | `directive.created`, `directive.delivered` (per recipient), `directive.acknowledged` (per recipient), `directive.superseded`, `directive.expired` |

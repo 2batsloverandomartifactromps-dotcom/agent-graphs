@@ -2,6 +2,8 @@ export * from './actions';
 export * from './aims';
 export * from './attempts';
 export * from './build';
+export * from './duty';
+export * from './mutations';
 export * from './next';
 export * from './requests';
 export * from './run';

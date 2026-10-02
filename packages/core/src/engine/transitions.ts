@@ -2,6 +2,7 @@
  * Node, loop, and graph transitions (docs/concepts.md §2.1, §3.3, §7). Commands call these and
  * finish with `settle()`, which recomputes readiness to a fixpoint and runs graph-level checks.
  */
+import { lessonDutyFailures } from '../evolution/duties';
 import type { AttemptStatus, ExhaustionPolicy, NodeStatus } from '../vocabulary';
 import {
   activationVerdicts,
@@ -91,6 +92,7 @@ export function endAttempt(
   options: { reason?: string; counted?: boolean } = {},
 ): void {
   attempt.status = status;
+  if (status === 'passed') attempt.passedAt = tx.ctx.now;
   attempt.counted = options.counted ?? false;
   if (options.reason !== undefined) attempt.outcomeReason = options.reason;
   delete attempt.leaseExpiresAt;
@@ -413,17 +415,14 @@ export function decideAttempt(
 
 /** In learn mode and above, passing after counted failures opens a lesson duty (§16). */
 function maybeLessonDuty(state: GraphState, tx: Tx, node: Node, passed: Attempt): void {
-  if (state.graph.evolution.mode === 'off') return;
-  const failed = attemptsOf(state, node.id).filter(
-    (a) => a.id !== passed.id && (a.counted || a.status === 'failed'),
-  );
+  const failed = lessonDutyFailures(state, node.id, passed.id);
   if (failed.length === 0) return;
   const duty = {
     id: tx.ctx.id('ld'),
     graphId: state.graph.id,
     nodeId: node.id,
     passedAttemptId: passed.id,
-    failedAttemptIds: failed.map((a) => a.id),
+    failedAttemptIds: failed,
     status: 'open' as const,
     assignee: 'worker' as const,
     createdAt: tx.ctx.now,

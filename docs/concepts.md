@@ -395,6 +395,9 @@ Use them for useful signals such as bundle size or performance.
 | `open_findings_high` | graph | Findings with severity ≥ high that are neither retracted nor resolved (§9.1) |
 | `children_done_ratio` | group | (done + skipped) children / children |
 
+A milestone has no attempts of its own, so its derived aims read the graph scope (for example
+`cost_usd ≤ 20` at the milestone means total spend so far).
+
 ### 6.4 Qualitative evaluation
 
 The `evaluator` decides who judges:

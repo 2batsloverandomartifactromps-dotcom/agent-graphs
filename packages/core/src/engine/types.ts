@@ -234,6 +234,8 @@ export type Attempt = {
   timeoutEscalated?: boolean;
   startedAt: number;
   submittedAt?: number;
+  /** Set when the attempt passed; kept if a later reset supersedes it. */
+  passedAt?: number;
   endedAt?: number;
 };
 
@@ -446,8 +448,10 @@ export type EngineCtx = {
 };
 
 /** Collects touched entities (upserts) and events for one command. */
+export type Effect = { kind: EntityKind; entity: { id?: string }; deleted?: boolean };
+
 export class Tx {
-  readonly dirty = new Map<string, { kind: EntityKind; entity: { id?: string } }>();
+  readonly dirty = new Map<string, Effect>();
   readonly events: DomainEvent[] = [];
   constructor(readonly ctx: EngineCtx) {}
 
@@ -456,6 +460,11 @@ export class Tx {
     const key = `${kind}:${e.id ?? `${e.directiveId}:${e.recipient}`}`;
     this.dirty.set(key, { kind, entity: entity as { id?: string } });
     return entity;
+  }
+
+  /** Record a deletion (only unstarted structure: nodes, edges, loops, aims, orchestrators). */
+  remove(kind: EntityKind, id: string): void {
+    this.dirty.set(`${kind}:${id}`, { kind, entity: { id }, deleted: true });
   }
 
   emit(

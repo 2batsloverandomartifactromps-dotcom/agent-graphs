@@ -849,6 +849,7 @@ export function manualAttempt(
     manual: true,
     startedAt: tx.ctx.now,
     submittedAt: tx.ctx.now,
+    passedAt: tx.ctx.now,
     endedAt: tx.ctx.now,
   };
   if (tx.ctx.actor.sessionId) attempt.sessionId = tx.ctx.actor.sessionId;

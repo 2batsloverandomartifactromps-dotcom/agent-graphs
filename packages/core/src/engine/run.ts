@@ -4,11 +4,11 @@
  * If `fn` throws, the caller must discard `state`: it may be partially mutated.
  */
 import { settle } from './transitions';
-import { type DomainEvent, type EngineCtx, type EntityKind, type GraphState, Tx } from './types';
+import { type DomainEvent, type Effect, type EngineCtx, type GraphState, Tx } from './types';
 
 export type CommandOutput<R> = {
   result: R;
-  effects: Array<{ kind: EntityKind; entity: { id?: string } }>;
+  effects: Effect[];
   events: DomainEvent[];
 };
 

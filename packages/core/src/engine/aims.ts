@@ -109,7 +109,10 @@ export function derivedMetric(state: GraphState, name: string, node?: Node): num
 export function aimValue(state: GraphState, aim: Aim, attempt?: Attempt): number | undefined {
   if (aim.metric === undefined) return undefined;
   const node = aim.ownerType === 'node' ? state.nodes.get(aim.ownerId) : undefined;
-  if (aim.source === 'derived') return derivedMetric(state, aim.metric, node);
+  // Milestones have no attempts of their own, so their derived aims read graph scope.
+  if (aim.source === 'derived') {
+    return derivedMetric(state, aim.metric, node?.kind === 'milestone' ? undefined : node);
+  }
   const reports = state.metrics.filter((m) => {
     if (m.name !== aim.metric) return false;
     if (aim.ownerType === 'node') {

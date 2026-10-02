@@ -300,10 +300,10 @@ describe('engine invariants (concepts §15)', () => {
           }
         },
       ),
-      { numRuns: 300 },
+      { numRuns: 1000 },
     );
     if (process.env.INVARIANT_STATS) process.stdout.write(`STATS ${JSON.stringify(STATS)}\n`);
-  });
+  }, 60_000);
 
   it('every graph can be driven to completion by passing agents and approving humans', () => {
     fc.assert(
