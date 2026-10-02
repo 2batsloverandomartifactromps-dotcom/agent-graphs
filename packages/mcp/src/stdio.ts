@@ -15,7 +15,9 @@ export async function runStdioServer(options: StdioOptions = {}) {
   const env = options.env ?? process.env;
   const cwd = options.cwd ?? process.cwd();
   const server = createMcpServer({
-    client: clientFromEnv(env, { client: 'mcp' }),
+    // The session goes to the tool context, not the client: attempt-scoped calls must not send
+    // it (they keep the attempt executor's annotation); capability calls add it per call.
+    client: clientFromEnv({ ...env, AGENT_GRAPHS_SESSION: undefined }, { client: 'mcp' }),
     profile: options.profile ?? 'all',
     actor: parseActor(env.AGENT_GRAPHS_ACTOR),
     clientSessionId: () => clientSessionFromEnv(env, cwd),
