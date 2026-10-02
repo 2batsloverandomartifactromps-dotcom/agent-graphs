@@ -3,6 +3,12 @@
  * engine (state transitions), aim evaluation, and briefing/sitrep renderers.
  *
  * Must stay pure: no I/O and no Node-only APIs, so the server, web app, and simulator can all
- * use it. Normative semantics: docs/concepts.md. Built in milestone M1 (docs/PLAN.md §7).
+ * use it. Normative semantics: docs/concepts.md.
  */
+export * from './graph/algorithms';
+export * from './schemas/common';
+export * from './spec/export';
+export * from './spec/normalize';
+export * from './spec/schema';
+export * from './spec/validate';
 export * from './vocabulary';
