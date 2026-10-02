@@ -1,0 +1,51 @@
+name: mutations under the append policy
+description: >
+  With policy.mutations append (the default), an attached orchestrator with mutate may add
+  nodes and edges, but may not modify or remove existing nodes (POLICY_DENIED). The added node
+  runs and the graph completes.
+spec: |
+  schema: agent-graphs/v1
+  title: Append mutations
+  slug: mutations-append
+  policy: { mutations: append }
+  orchestrators:
+    - { key: lead, name: Lead, role: lead, capabilities: [mutate, resolve] }
+  aims:
+    - { key: all-done, title: All nodes complete, metric: nodes_done_ratio, source: derived, comparator: gte, target: 1 }
+  nodes:
+    - key: build
+      title: Build
+      aim: Built
+      purpose: The work
+      prompt: Build it.
+      aims: [{ check: "build_ok >= 1" }]
+    - key: ship
+      title: Ship
+      aim: Shipped
+      purpose: Users get it
+      needs: [build]
+      prompt: Ship it.
+      aims: ["Release notes published"]
+agents:
+  workers: [{ profile: reliable-worker, durationMinutes: { min: 10, max: 10 } }]
+  human: false
+script:
+  - at: 1
+    action: mutate
+    as: lead
+    batch: { addNodes: [{ key: changelog, title: Changelog, aim: Changelog written, purpose: Users, prompt: Write the changelog., needs: [build], aims: ["Changelog lists every change"] }], addEdges: [{ from: changelog, to: ship }] }
+  - at: 2
+    action: mutate
+    as: lead
+    batch: { updateNodes: [{ key: ship, prompt: Ship it carefully. }] }
+    expectError: POLICY_DENIED
+  - at: 3
+    action: mutate
+    as: lead
+    batch: { removeNodes: [changelog] }
+    expectError: POLICY_DENIED
+expect:
+  graph: completed
+  nodes: { build: done, changelog: done, ship: done }
+  events:
+    min: { graph.revised: 1 }

@@ -1,0 +1,20 @@
+name: gate rejection loop
+description: >
+  The human design review rejects twice with comments; each rejection fires the review-cycle
+  loop and sends the work back to implement with the comment as feedback. The third pass is
+  approved.
+specFile: ../../../examples/graphs/minimal.yaml
+agents:
+  workers: [{ profile: reliable-worker }]
+  judges: [{ profile: judge, strictness: 0 }]
+  human: { delayMinutes: 3 }
+gates:
+  review: [reject, reject, approve]
+expect:
+  graph: completed
+  nodes: { implement: done, review: done }
+  loops:
+    review-cycle: { iteration: 3, status: satisfied }
+  events:
+    min: { loop.iterated: 2, attempt.superseded: 2, attempt.claimed: 3 }
+  requests: { gate: 3 }
