@@ -102,6 +102,9 @@ Indexes: `(status, archived_at)`, `(last_activity_at)`.
 | `attempts_total` | INT | Lifetime count. |
 | `current_attempt_id` | TEXT NULL | |
 | `accepted_with_deviation` | INT | |
+| `manual` | INT | Completed manually (audit). |
+| `feedback` | JSON NULL | Feedback packet handed to the next attempt (retry, loop, escalation edit). |
+| `deferred_failure` | JSON NULL | A failure decision deferred while the node is paused. |
 | `version` | INT | |
 | `created_at`, `updated_at`, `ready_at`, `started_at`, `completed_at` | INT | |
 
@@ -144,6 +147,7 @@ JSON (who or what authored or appended each attribute), `version`, `created_at`,
 | `target`, `target_max` | REAL NULL | |
 | `criteria` | JSON NULL | Qualitative rubric. |
 | `evaluator`, `evaluator_key` | TEXT NULL | |
+| `implicit` | INT | The implicit approval aim of a gate. |
 | `sort_order` | INT | |
 | `status` | TEXT | Current activation: `pending | met | unmet | partial | waived` |
 | `current_value` | REAL NULL | Latest aggregated value (quantitative). |
@@ -172,7 +176,10 @@ JSON (who or what authored or appended each attribute), `version`, `created_at`,
 | `summary`, `outcome_reason` | TEXT NULL | |
 | `usage` | JSON NULL | Tokens and cost, accumulated. |
 | `briefing_hash` | TEXT NULL | Version of the last briefing delivered. |
-| `started_at`, `submitted_at`, `ended_at` | INT | |
+| `manual` | INT | Created by a manual completion. |
+| `last_progress_event_at` | INT NULL | Rate limit for `attempt.progress` events. |
+| `timeout_escalated` | INT NULL | A timeout escalation was opened (or answered with `ignore`). |
+| `started_at`, `submitted_at`, `passed_at`, `ended_at` | INT | `passed_at` survives a later `superseded` (first-pass yield). |
 
 Indexes: `(graph_id, status)`, `(status, lease_expires_at)` for the sweeper, `(session_id)`.
 
@@ -224,7 +231,7 @@ against node `executor.requires`), `meta` JSON, `status`
 Indexes: `(client_session_id)`, `(status, last_seen_at)`.
 
 ### `requests`
-`id` (`rq_…`), `graph_id`, `node_id` NULL, `attempt_id` NULL, `aim_id` NULL, `kind`
+`id` (`rq_…`), `graph_id`, `node_id` NULL, `attempt_id` NULL, `aim_id` NULL, `loop_id` NULL, `kind`
 (`approval | question | escalation | blocker`), `subject` (`gate | aim | plan | proposal |
 exhaustion | loop | guard | stall | verification | milestone | timeout | question | blocker`;
 the option catalog per subject is in [concepts §11.1](concepts.md#111-requests)), `title`, `body`, `options`
@@ -243,7 +250,7 @@ NULL, `expires_at` NULL, `created_by` JSON, `created_at`. Index:
 
 ### `directive_deliveries`
 One row per recipient: PK `(directive_id, recipient)`, where `recipient` is an attempt id or a
-session id. Columns: `delivered_at`, `delivered_via` (`claim | briefing | heartbeat | hook`),
+session id. Columns: `graph_id`, `delivered_at`, `delivered_via` (`claim | briefing | heartbeat | hook`),
 `acked_at`, `acked_by` JSON, `ack_note`. Graph-wide and persistent node directives reach many
 attempts, so delivery and acknowledgment are tracked here.
 

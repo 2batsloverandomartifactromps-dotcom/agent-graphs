@@ -232,6 +232,13 @@ function authorize(state: GraphState, batch: MutationBatch, actor: MutationActor
     if (node && STARTED(node) && !actor.admin) {
       throw denied(`'${node.key}' has started; orchestrators may only modify unstarted nodes.`);
     }
+    if (node && STARTED(node) && 'needs' in u) {
+      throw new EngineError(
+        'INVALID_TRANSITION',
+        `Cannot change the prerequisites of '${node.key}': it has started.`,
+        'Reopen it first (this cascades to its descendants), then edit its needs.',
+      );
+    }
     if (node && STARTED(node) && 'kind' in u && u.kind !== node.kind) {
       throw new EngineError(
         'INVALID_TRANSITION',

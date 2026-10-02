@@ -34,6 +34,7 @@ export type {
 export { EngineError, SYSTEM_ACTOR, Tx } from './engine/types';
 export * from './evolution/index';
 export * from './graph/algorithms';
+export * from './schemas/api';
 export * from './schemas/common';
 export * from './spec/export';
 export * from './spec/json-schema';

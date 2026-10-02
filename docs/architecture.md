@@ -65,7 +65,7 @@ CLI with the server, the MCP server, and the built UI) are bundled with **tsdown
 ### 3.1 Layers
 | Layer | Responsibility |
 |---|---|
-| **Routes** (`src/routes/*`) | HTTP only: OpenAPI route definitions, auth, input/output schemas, ETag/If-Match, idempotency. No business logic. |
+| **Routes** (`src/routes/*`) | HTTP only: route declarations (`api.route({ method, path, role, body, query }, handler)` in `routes/define.ts`, which validates with zod and generates the OpenAPI 3.1 document), auth, ETag/If-Match, idempotency. No business logic. |
 | **Commands** (`src/commands/*`) | One function per use case (`claimNode`, `submitAttempt`, `resolveRequest`, …). Opens a transaction, loads state, calls the engine, persists effects, appends events, and publishes after commit. |
 | **Engine** (`@agent-graphs/core/engine`) | Pure functions: `(state, input, ctx) → { effects, events, result }`. `ctx` injects `now()` and `id()`, so it is deterministic and testable. Holds every rule from concepts.md. |
 | **Repositories** (`src/db/*`) | Drizzle queries. Load a `GraphState` and apply `Effect[]`. Dialect specifics live here. |
@@ -283,7 +283,7 @@ All versions were verified on npm on 2026-10-02. The license policy is in
 | Lint / format | Biome | 2.5 | MIT OR Apache-2.0 |
 | Tests | Vitest · fast-check · Playwright | 5.0 · 4.x · 1.63 | MIT · MIT · Apache-2.0 |
 | Schemas | zod | 4.x | MIT |
-| HTTP | Hono · @hono/node-server · @hono/zod-openapi | 4.13 · 2.1 · 1.6 | MIT |
+| HTTP | Hono · @hono/node-server | 4.13 · 2.1 | MIT |
 | DB | better-sqlite3 (SQLite: public domain) · Drizzle ORM · drizzle-kit | 13 · 0.45 · 0.31 | MIT · Apache-2.0 · MIT |
 | IDs / YAML / logs | ulid · yaml · pino | 3 · 2.9 · 10 | MIT · ISC · MIT |
 | MCP | @modelcontextprotocol/sdk · @hono/mcp | 1.31 · 0.3 | MIT |

@@ -1,5 +1,5 @@
 /** Requests, directives, notes, and evaluations: the record-keeping primitives. */
-import type { Evidence } from '../schemas/common';
+import type { Evidence, ExecutionAnnotation, Usage } from '../schemas/common';
 import type {
   DirectiveKind,
   DirectiveTarget,
@@ -205,6 +205,10 @@ export type NoteInput = {
   severity?: string;
   evidence?: Evidence[];
   metrics?: Record<string, number>;
+  author?: ExecutionAnnotation;
+  relayedBy?: ExecutionAnnotation;
+  usage?: Usage;
+  pinned?: boolean;
 };
 
 /** Notes are append-only and live outside GraphState; the engine only emits new ones. */
@@ -215,8 +219,8 @@ export function createNote(state: GraphState, tx: Tx, input: NoteInput): Note {
     type: input.type,
     title: input.title,
     evidence: input.evidence ?? [],
-    author: tx.ctx.actor,
-    pinned: false,
+    author: input.author ?? tx.ctx.actor,
+    pinned: input.pinned ?? false,
     createdAt: tx.ctx.now,
   };
   for (const k of [
@@ -227,6 +231,8 @@ export function createNote(state: GraphState, tx: Tx, input: NoteInput): Note {
     'replyTo',
     'severity',
     'metrics',
+    'relayedBy',
+    'usage',
   ] as const) {
     if (input[k] !== undefined) (note as Record<string, unknown>)[k] = input[k];
   }

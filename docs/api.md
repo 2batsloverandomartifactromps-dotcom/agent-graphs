@@ -1,9 +1,9 @@
 # HTTP API (`/api/v1`)
 
 The REST API is the single source of truth for every client: the web UI, the CLI, the MCP
-server, the simulator, and third-party agents. It is implemented with Hono and
-`@hono/zod-openapi`, so request and response schemas come from the same zod definitions as the
-core package. The **OpenAPI 3.1** document is served at `GET /api/v1/openapi.json`, and a
+server, the simulator, and third-party agents. It is implemented with Hono. Every
+route is declared with zod schemas from `@agent-graphs/core` (`packages/core/src/schemas/api.ts`),
+which both validate requests and generate the OpenAPI document, so they never drift. The **OpenAPI 3.1** document is served at `GET /api/v1/openapi.json`, and a
 reference UI at `/api/docs`.
 
 Semantics are defined in [concepts.md](concepts.md). Agent usage patterns are in

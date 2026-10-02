@@ -18,7 +18,7 @@ program
   .option('--host <host>', 'interface to bind', process.env.HOST ?? '127.0.0.1')
   .action(async (options: { port: string; host: string }) => {
     const { startServer } = await import('@agent-graphs/server');
-    startServer({ port: Number(options.port), hostname: options.host });
+    startServer({ port: Number(options.port), host: options.host });
   });
 
 program
