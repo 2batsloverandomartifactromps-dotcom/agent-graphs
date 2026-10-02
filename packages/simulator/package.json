@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "Fake agents, seed data and a scenario runner for Agent Graphs demos and tests.",
-  "license": "MIT OR Apache-2.0",
+  "license": "UNLICENSED",
   "type": "module",
   "exports": {
     ".": "./src/index.ts"

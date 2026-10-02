@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "Agent Graphs web UI (React + Vite).",
-  "license": "MIT OR Apache-2.0",
+  "license": "UNLICENSED",
   "type": "module",
   "scripts": {
     "dev": "vite",

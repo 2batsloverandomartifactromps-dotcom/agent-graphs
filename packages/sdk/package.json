@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "Typed HTTP + SSE client for the Agent Graphs API (Node and browsers).",
-  "license": "MIT OR Apache-2.0",
+  "license": "UNLICENSED",
   "type": "module",
   "exports": {
     ".": "./src/index.ts"

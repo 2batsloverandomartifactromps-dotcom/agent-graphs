@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "Agent Graphs server: REST API, SSE, MCP over HTTP, background jobs, and the web UI host.",
-  "license": "MIT OR Apache-2.0",
+  "license": "UNLICENSED",
   "type": "module",
   "exports": {
     ".": "./src/index.ts"

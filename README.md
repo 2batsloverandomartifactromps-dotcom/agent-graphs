@@ -90,13 +90,6 @@ packages/simulator fake agents, seed data, scenario runner
 
 ## License
 
-Dual-licensed under **[MIT](LICENSE-MIT) OR [Apache-2.0](LICENSE-APACHE)**, at your option. All
-runtime dependencies are permissively licensed, and `pnpm check:licenses` enforces this in CI
-(see [docs/licensing.md](docs/licensing.md)). Commercial use, modification, and redistribution
-are unrestricted.
-
-## Contributing
-
-Contributions are accepted under the same dual license. Please sign off your commits
-(`git commit -s`, per the [DCO](https://developercertificate.org/)). Run `pnpm check` before
-opening a PR.
+Proprietary. Copyright (c) 2026 A2A Adventures. All rights reserved (see [LICENSE](LICENSE)).
+All dependencies are permissively licensed, and `pnpm check:licenses` enforces this in CI (see
+[docs/licensing.md](docs/licensing.md)), so A2A Adventures can choose any license later.

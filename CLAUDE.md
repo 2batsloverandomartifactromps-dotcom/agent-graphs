@@ -61,7 +61,9 @@ node packages/cli/bin/agraph.js --help   # CLI from source
   evolution settings.
 
 ## Dependencies and licensing
-- The project is `MIT OR Apache-2.0`. **Only permissively licensed dependencies are allowed.**
+- The project is proprietary (Copyright A2A Adventures, all rights reserved; packages are
+  `UNLICENSED` and private). **Only permissively licensed dependencies are allowed**, so any
+  future license stays possible.
   Check before adding (`npm view <pkg> license`), then run `pnpm check:licenses`.
 - Never add GPL, AGPL, LGPL, SSPL, BUSL, EPL-only, or non-commercial packages. `elkjs` was
   rejected for this reason; use `@dagrejs/dagre` for layout.

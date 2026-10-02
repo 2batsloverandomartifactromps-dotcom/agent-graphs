@@ -2,24 +2,19 @@
 
 ## Project license
 
-Agent Graphs is dual-licensed under **MIT OR Apache-2.0**, at the licensee's option
-(SPDX: `MIT OR Apache-2.0`). See [`LICENSE-MIT`](../LICENSE-MIT) and
-[`LICENSE-APACHE`](../LICENSE-APACHE).
+Agent Graphs is **proprietary**: Copyright (c) 2026 A2A Adventures. All rights reserved. See
+[`LICENSE`](../LICENSE). All packages declare `"license": "UNLICENSED"` and `"private": true`, so
+nothing is published to npm by accident.
 
-Why this choice:
-- **Commercial use is unrestricted.** Both licenses allow use, modification, sublicensing, and
-  sale, including inside closed-source products, with no copyleft obligations.
-- **Licensing compatibility is as wide as possible.** MIT is compatible with essentially every
-  license, including GPLv2. Apache-2.0 adds an explicit patent grant, which many companies'
-  legal reviews prefer. Offering both lets every downstream user pick whichever fits.
-- **The owner keeps full freedom.** As the copyright holder, the owner can also license the code
-  under other terms (for example a commercial license or support agreement). Because every
-  dependency is permissively licensed, nothing in the dependency tree imposes obligations on
-  how the product is licensed.
+Why this setup:
+- **Closed for now.** No external license is granted. The owner decides later whether to
+  release it under an open-source license, a commercial license, or both.
+- **Every option stays open.** Every dependency is permissively licensed (below), so nothing in
+  the dependency tree constrains how A2A Adventures licenses the product later: proprietary,
+  open source, or dual-licensed.
 
-> If outside contributions are accepted and you want to keep the option to relicense
-> contributed code, add a CLA or require contributions under `MIT OR Apache-2.0` with a DCO
-> sign-off. The current `CONTRIBUTING` note in the README asks for the latter.
+> If outside contributions are ever accepted, use a CLA that assigns or licenses the
+> contributions to A2A Adventures, so the code can still be relicensed.
 
 ## Dependency policy
 

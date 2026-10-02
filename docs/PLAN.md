@@ -59,7 +59,7 @@ Because all state lives in the graph rather than in any one agent's context wind
 | Agents update graph status directly | [agent-protocol.md](agent-protocol.md): claim, heartbeat, notes, submit |
 | Auditing and orchestration management | Append-only, hash-chained events; audit export, verify, and gaps · [concepts §13](concepts.md#13-events-and-audit) |
 | All stages executed despite limited or large context | [concepts §12](concepts.md#12-context-resilience): briefings, sitreps, checkpoints, handoffs, leases, hooks, completion guards |
-| Permissively licensable for commercial use, with no incompatible dependencies | [licensing.md](licensing.md): `MIT OR Apache-2.0`, permissive-only dependencies, CI license gate |
+| Licensable as the owner chooses, permitted for the owner's commercial use, with no incompatible dependencies | [licensing.md](licensing.md): proprietary for now (A2A Adventures); permissive-only dependencies; CI license gate |
 | Optional self-evolution mechanisms, based on *Procedural Graphs* (arXiv:2609.09153) and related work | [self-evolution.md](self-evolution.md): edge condition/guidance/pitfalls; lessons; an evolver role with gated proposals (≥ incumbent, ties accepted) and a rejection memory; protected fields; lineage. Phased E1 → E4. |
 
 ## 4. How it works: one graph, end to end
@@ -132,7 +132,7 @@ Details are in [architecture.md](architecture.md).
 | D9 | **Self-declared annotations**, attempt id as a capability, role tokens | Fits the honest-but-fallible threat model and keeps agent ergonomics simple | Per-agent PKI (overkill for now) |
 | D10 | **React 19 + Vite + TanStack + Tailwind + Radix + React Flow + dagre** | A modern, fast, accessible, permissively licensed UI stack | ELK layout (rejected: EPL/GPL); Next.js (unneeded SSR) |
 | D11 | **MCP + CLI + REST** behind one `agraph` binary | MCP for Claude Code and other MCP clients, the CLI for shell agents and hooks, REST for everything else | MCP only |
-| D12 | **`MIT OR Apache-2.0`**, permissive-only dependencies, enforced in CI | Unrestricted commercial use and the widest licensing compatibility | Apache-2.0 only; MIT only |
+| D12 | **Proprietary for now** (A2A Adventures, all rights reserved), permissive-only dependencies, enforced in CI | The owner keeps every option (closed, open, dual) open | Releasing now as `MIT OR Apache-2.0` (deferred) |
 | D13 | **Optional, gated self-evolution** modelled on *Procedural Graphs*: edge condition/guidance/pitfalls, lessons, an `evolver` role, a validation gate (≥ incumbent), a rejection memory, protected fields | Graphs improve from their own traces without silent drift or objective hacking. Off by default, because benefits vary by model and scenario (AgentStream). | Free-form auto-rewriting of prompts and graphs (unsafe); no learning (wastes the trace data we already record) |
 
 ## 7. Roadmap
@@ -243,17 +243,15 @@ M0 ──► M1 core ──► M2 server ──┬──► M3 agent interfaces 
 
 ## 10. Open questions for the owner
 
-1. **Copyright holder** for the license files. Currently "the Agent Graphs authors"; replace it
-   with your legal name or company.
-2. **Deployment target**: local-only first, or a hosted instance that cloud agent sessions can
+1. **Deployment target**: local-only first, or a hosted instance that cloud agent sessions can
    reach? This decides how early token-auth UX and Docker matter.
-3. **Default human checkpoints**: should agent-created graphs require plan approval by default?
-4. **Agent runtimes beyond Claude Code** to prioritize (Codex, Gemini CLI, custom SDK agents)?
-5. **Built-in runner (M6)**: do you eventually want the platform to launch agents itself?
-6. **Self-evolution validation data**: which recurring kinds of work (bug fix, feature,
+2. **Default human checkpoints**: should agent-created graphs require plan approval by default?
+3. **Agent runtimes beyond Claude Code** to prioritize (Codex, Gemini CLI, custom SDK agents)?
+4. **Built-in runner (M6)**: do you eventually want the platform to launch agents itself?
+5. **Self-evolution validation data**: which recurring kinds of work (bug fix, feature,
    dependency upgrade, …) should get templates and evaluation suites first? `auto` mode (E3)
    needs them.
-7. **Paper access**: `arxiv.org` is blocked by this environment's network policy, so the
+6. **Paper access**: `arxiv.org` is blocked by this environment's network policy, so the
    self-evolution design relies on the abstract and two open-source reimplementations. If you
    allow `arxiv.org` (or paste the PDF), I will reconcile the details against the paper.
 
