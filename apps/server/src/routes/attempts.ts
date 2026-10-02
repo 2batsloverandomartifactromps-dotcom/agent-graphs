@@ -23,6 +23,7 @@ import { notes } from '../db/schema';
 import { attemptSummary, nodeSummary } from '../read/views';
 import { annotationOf, getSession } from '../sessions';
 import type { Api } from './define';
+import { recordLessonApplications, settleLessonApplications } from './lessons';
 import { briefingFor, briefingOut, graphOfAttempt, respond } from './util';
 
 /** Attempt-scoped calls act as the attempt's executor unless a session header says otherwise. */
@@ -100,6 +101,7 @@ export function attemptRoutes(api: Api, app: AppContext): void {
         fresh,
         query.budget ? { budget: query.budget } : {},
       );
+      if (fresh.status === 'running') recordLessonApplications(app, fresh.id, b.lessonIds);
       if (query.format === 'json') return respond(c, briefingOut(b, 'json'));
       return c.text(b.markdown, 200, { 'Content-Type': 'text/markdown; charset=utf-8' });
     },
@@ -236,6 +238,9 @@ export function attemptRoutes(api: Api, app: AppContext): void {
           proofNotes: existingProof + (body.notes ?? []).filter((n) => n.type === 'proof').length,
         });
       });
+      if (out.result.outcome !== 'evaluating') {
+        settleLessonApplications(app, attempt.id, out.result.outcome);
+      }
       const duty = [...out.state.lessonDuties.values()].find(
         (d) => d.passedAttemptId === attempt.id && d.status === 'open',
       );

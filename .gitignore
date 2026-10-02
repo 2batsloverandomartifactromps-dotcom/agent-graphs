@@ -28,3 +28,6 @@ test-results/
 .DS_Store
 .idea/
 *.swp
+
+# agent worktrees
+.claude/worktrees/
