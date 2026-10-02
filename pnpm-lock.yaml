@@ -193,12 +193,18 @@ importers:
       '@agent-graphs/server':
         specifier: workspace:*
         version: link:../../apps/server
+      '@agent-graphs/simulator':
+        specifier: workspace:*
+        version: link:../simulator
       commander:
         specifier: ^15.0.0
         version: 15.0.0
       tsx:
         specifier: ^4.23.15
         version: 4.23.15
+      yaml:
+        specifier: ^2.9.1
+        version: 2.9.1
 
   packages/core:
     dependencies:

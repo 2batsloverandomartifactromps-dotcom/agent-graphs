@@ -16,7 +16,9 @@
     "@agent-graphs/mcp": "workspace:*",
     "@agent-graphs/sdk": "workspace:*",
     "@agent-graphs/server": "workspace:*",
+    "@agent-graphs/simulator": "workspace:*",
     "commander": "^15.0.0",
-    "tsx": "^4.23.15"
+    "tsx": "^4.23.15",
+    "yaml": "^2.9.1"
   }
 }

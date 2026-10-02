@@ -1,0 +1,63 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node /path/to/agent-graphs/packages/cli/bin/agraph.js hook session-start",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node /path/to/agent-graphs/packages/cli/bin/agraph.js hook post-tool-use",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node /path/to/agent-graphs/packages/cli/bin/agraph.js hook stop",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node /path/to/agent-graphs/packages/cli/bin/agraph.js hook stop --subagent",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node /path/to/agent-graphs/packages/cli/bin/agraph.js hook pre-compact",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  },
+  "env": {
+    "AGENT_GRAPHS_URL": "http://localhost:4747"
+  }
+}
