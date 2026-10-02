@@ -116,7 +116,7 @@ stalled. Stalled graphs get a badge. The server opens a `stall` escalation when 
 
 If all are met or waived, the graph completes. If any is unmet, the server opens a
 `verification` escalation. Its options are **add work** (the graph returns to `active` so nodes
-can be added), **waive** an aim (with justification), **accept** (completed, with
+can be added or reopened; it re-enters `verifying` only after a node changes status), **waive** an aim (with justification), **accept** (completed, with
 `acceptedWithDeviation`), or **fail**.
 
 ### 2.2 Plan approval
@@ -261,7 +261,7 @@ Notes:
 | `retry` (+N attempts) | failed, needs_input (exhaustion) | `granted_attempts += N` → `ready` |
 | `fail` (reason) | ready, running, evaluating, needs_input, blocked | → `failed`; open attempt → `cancelled` |
 | `reopen` (admin) | done, skipped, failed | cascade reset (see above) |
-| `complete-manually` (admin) | pending, ready, needs_input, blocked, failed | → `done` (manual) |
+| `complete-manually` (admin) | pending (prerequisites satisfied), ready, needs_input, blocked, failed | → `done` (manual). Supplied verdicts on terminating aims must be `met`; the rest are waived. |
 
 `granted_attempts` resets with each new activation. `granted_iterations` on a loop lasts for the
 loop's lifetime, unless an enclosing loop resets it.

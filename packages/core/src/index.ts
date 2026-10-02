@@ -5,6 +5,31 @@
  * Must stay pure: no I/O and no Node-only APIs, so the server, web app, and simulator can all
  * use it. Normative semantics: docs/concepts.md.
  */
+
+export * as engine from './engine/index';
+export type {
+  Aim,
+  Attempt,
+  Directive,
+  DirectiveDelivery,
+  DomainEvent,
+  Edge,
+  EngineCtx,
+  EntityKind,
+  Evaluation,
+  FeedbackPacket,
+  Graph,
+  GraphState,
+  HumanRequest,
+  LessonDuty,
+  Loop,
+  MetricReport,
+  Node,
+  Note,
+  Orchestrator,
+  RequestOption,
+} from './engine/types';
+export { EngineError, SYSTEM_ACTOR, Tx } from './engine/types';
 export * from './graph/algorithms';
 export * from './schemas/common';
 export * from './spec/export';

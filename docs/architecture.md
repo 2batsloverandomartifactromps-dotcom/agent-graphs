@@ -79,10 +79,10 @@ CLI with the server, the MCP server, and the built UI) are bundled with **tsdown
 2. `claimNode` runs `BEGIN IMMEDIATE`. It loads `GraphState` for the graph (graph, nodes, edges,
    loops, aims, open attempts). This is a single-digit number of queries; around 1000 nodes
    take a few ms.
-3. `engine.claim(state, { nodeKey, actor, dispatchedBy }, ctx)` validates the transition (node
-   ready, graph active, `maxParallel` respected, executor `requires` met) and returns effects
-   (insert attempt, update node, upsert session) and events (`attempt.claimed`,
-   `node.status_changed`).
+3. `run(state, ctx, (s, tx) => engine.claim(s, tx, { nodeId, actor, dispatchedBy }))` validates
+   the transition (node ready, graph active, `maxParallel` respected, executor `requires` met) and
+   returns effects (the new attempt, the updated node) and events (`attempt.claimed`,
+   `node.status_changed`). The command upserts the session itself.
 4. The repository applies the effects. The event log appends events with the hash chain (it
    reads `chain_head` and writes the new head).
 5. `COMMIT`. The bus publishes the events with entity snapshots, and SSE pushes them to
@@ -94,24 +94,45 @@ If profiling later calls for it, `GraphState` can be cached per graph in memory.
 through this process, so write-through invalidation is trivial.
 
 ### 3.3 Engine shape
+The engine (`packages/core/src/engine`) works on a `GraphState` loaded inside the command's
+transaction. Each command is a function `(state, tx, input) → result` that **mutates the loaded
+state in place** and records what it did in a `Tx`:
+
 ```ts
-type EngineCtx = { now: () => number; id: (prefix: IdPrefix) => string; policy: ResolvedPolicy };
-type EngineResult<R> = { effects: Effect[]; events: DomainEvent[]; result: R };
+type EngineCtx = { now: number; id: (prefix: IdPrefix) => string; actor: ExecutionAnnotation };
+class Tx {
+  dirty: Map<string, { kind: EntityKind; entity }>; // every touched entity, upserted at commit
+  events: DomainEvent[];                            // appended to the hash chain at commit
+}
+run(state, ctx, fn) → { result, effects: [...tx.dirty.values()], events: tx.events }
 // e.g.
-claim(state: GraphState, input: ClaimInput, ctx: EngineCtx): EngineResult<ClaimResult>
-submit(state, input: SubmitInput, ctx): EngineResult<SubmitResult>
-evaluate(state, input: EvaluateInput, ctx): EngineResult<EvaluateResult>
-expireLeases(state, ctx): EngineResult<void>
-fireLoop(state, loopKey, feedback, ctx)   // internal, called by finalize
-recomputeReadiness(state, changedNodeIds, ctx)
+run(state, ctx, (s, tx) => claim(s, tx, { nodeId, actor, skills, dispatchedBy }))
+run(state, ctx, (s, tx) => submit(s, tx, { attemptId, summary, evaluations, metrics }))
+run(state, ctx, (s, tx) => resolveRequest(s, tx, requestId, { choice, comment, data }))
+run(state, ctx, (s, tx) => sweep(s, tx))          // lease expiry, timeouts, expiries
 ```
+
+- **Effects are a dirty set.** Rather than a list of typed insert/update operations, an effect is
+  "this entity now looks like this". The repository upserts each one by kind and id. Notes,
+  evaluations, metric reports, and events are only ever inserted (invariant 8).
+- **`run` settles.** After the command, `settle()` recomputes readiness to a fixpoint (gates open
+  approval requests, milestones evaluate), enters `verifying` when every node is done or skipped
+  and work moved in this command, evaluates graph aims, checks guards, and maintains `stalled`.
+- **Failures discard state.** An `EngineError(code, message, hint, status)` maps directly to the
+  API error envelope. Commands validate before mutating, but a thrown command may still have
+  touched `state`, so the server rolls back the transaction and drops the loaded state.
+- **Determinism.** `ctx` injects the clock, the id generator, and the actor, so tests, the
+  simulator, and replay are reproducible (`testCtx()` gives sequential ids and a manual clock).
+
 All of concepts.md §15 (invariants) is asserted after every engine call in tests, using
-property-based testing (fast-check) over random graphs and random action sequences.
+property-based testing (fast-check) over random graphs and random action sequences
+(`packages/core/test/invariants.test.ts`), next to table-driven scenario tests for every
+transition (`packages/core/test/engine.test.ts`).
 
 ### 3.4 Background jobs
 | Job | Interval | Does |
 |---|---|---|
-| Lease sweeper | 30 s | Expires attempt and orchestrator leases (`engine.expireLeases`). Marks sessions `lost`. |
+| Lease sweeper | 30 s | Expires attempt and orchestrator leases, flags attempt timeouts, and expires directives and requests (`engine.sweep`). Marks sessions `lost`. |
 | Guards | 60 s, and on usage changes | Re-evaluates derived metrics and guard aims (cost, elapsed time). Pauses the graph and escalates on violation. |
 | Stall and timeout check | 60 s | Raises and clears the stalled flag. Opens escalations for timeouts. |
 | Purges | hourly | Expired idempotency keys and old SSE replay buffers. |
