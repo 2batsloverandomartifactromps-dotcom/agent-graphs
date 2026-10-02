@@ -297,7 +297,7 @@ Idempotency-Key: 7f9c…
 
 ### Next
 ```json
-// POST /graphs/notes-mvp/next  { "actor": {…}, "capabilities": ["repo-write"], "claim": true }
+// POST /graphs/notes-mvp/next  { "actor": {…}, "skills": ["repo-write"], "claim": true }
 { "node": { "key": "docs", "title": "Write user docs", "priority": "p2", "reason": "highest priority ready node; unblocks mvp-ready" },
   "attempt": { "id": "at_…" }, "briefing": "…" }
 // or, when nothing is ready:
