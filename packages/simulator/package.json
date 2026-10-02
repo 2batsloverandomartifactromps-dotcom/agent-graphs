@@ -1,0 +1,19 @@
+{
+  "name": "@agent-graphs/simulator",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Fake agents, seed data and a scenario runner for Agent Graphs demos and tests.",
+  "license": "MIT OR Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@agent-graphs/core": "workspace:*",
+    "@agent-graphs/sdk": "workspace:*",
+    "yaml": "^2.9.1"
+  }
+}

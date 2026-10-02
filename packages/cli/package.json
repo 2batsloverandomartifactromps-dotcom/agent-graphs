@@ -1,0 +1,22 @@
+{
+  "name": "agent-graphs",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Agent Graphs: construct, run, monitor and audit execution graphs for agent-orchestrated builds. The `agraph` CLI serves the API + UI, bridges MCP, runs Claude Code hooks, and acts as a client.",
+  "license": "MIT OR Apache-2.0",
+  "type": "module",
+  "bin": {
+    "agraph": "./bin/agraph.js"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@agent-graphs/core": "workspace:*",
+    "@agent-graphs/mcp": "workspace:*",
+    "@agent-graphs/sdk": "workspace:*",
+    "@agent-graphs/server": "workspace:*",
+    "commander": "^15.0.0",
+    "tsx": "^4.23.15"
+  }
+}

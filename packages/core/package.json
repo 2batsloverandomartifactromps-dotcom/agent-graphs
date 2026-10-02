@@ -1,0 +1,21 @@
+{
+  "name": "@agent-graphs/core",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Agent Graphs domain core: schemas, spec validation, graph algorithms, the pure engine, briefings.",
+  "license": "MIT OR Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.test.json"
+  },
+  "dependencies": {
+    "yaml": "^2.9.1",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "fast-check": "^4.10.2"
+  }
+}

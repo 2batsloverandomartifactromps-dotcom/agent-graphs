@@ -1,0 +1,30 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+dist-schema/
+*.tsbuildinfo
+.vite/
+
+# local data (SQLite databases, backups, blobs)
+data/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+.agent-graphs/
+
+# tests & coverage
+coverage/
+playwright-report/
+test-results/
+
+# env & secrets
+.env
+.env.*
+!.env.example
+
+# editors & OS
+.DS_Store
+.idea/
+*.swp

@@ -1,0 +1,35 @@
+{
+  "name": "@agent-graphs/server",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Agent Graphs server: REST API, SSE, MCP over HTTP, background jobs, and the web UI host.",
+  "license": "MIT OR Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "tsx src/main.ts",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@agent-graphs/core": "workspace:*",
+    "@agent-graphs/mcp": "workspace:*",
+    "@hono/mcp": "^0.3.2",
+    "@hono/node-server": "^2.1.3",
+    "@hono/zod-openapi": "^1.6.3",
+    "better-sqlite3": "^13.0.3",
+    "drizzle-orm": "^0.45.3",
+    "hono": "^4.13.12",
+    "pino": "^10.3.1",
+    "ulid": "^3.0.2",
+    "yaml": "^2.9.1",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "drizzle-kit": "^0.31.11",
+    "tsx": "^4.23.15"
+  }
+}

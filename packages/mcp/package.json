@@ -1,0 +1,20 @@
+{
+  "name": "@agent-graphs/mcp",
+  "version": "0.0.0",
+  "private": true,
+  "description": "MCP server exposing Agent Graphs tools, prompts and resources (stdio + Streamable HTTP).",
+  "license": "MIT OR Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@agent-graphs/core": "workspace:*",
+    "@agent-graphs/sdk": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.31.0",
+    "zod": "^4.6.5"
+  }
+}
