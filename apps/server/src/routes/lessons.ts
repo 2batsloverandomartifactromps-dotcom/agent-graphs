@@ -253,7 +253,7 @@ export function lessonRoutes(api: Api, app: AppContext): void {
             lesson.scope = { ...lesson.scope, graph: s.graph.id };
           if (body.dutyId) {
             const duty = s.lessonDuties.get(body.dutyId);
-            if (!duty || duty.status !== 'open')
+            if (duty?.status !== 'open')
               throw new EngineError(
                 'INVALID_TRANSITION',
                 `Lesson duty ${body.dutyId} is not open.`,
@@ -304,7 +304,7 @@ export function lessonRoutes(api: Api, app: AppContext): void {
       const out = command(app, row.graph_id, actor, (s, t) => {
         requireCapability(c, s, actor, 'evolve');
         const duty = s.lessonDuties.get(params.id as string);
-        if (!duty || duty.status !== 'open')
+        if (duty?.status !== 'open')
           throw new EngineError('INVALID_TRANSITION', 'The duty is not open.');
         duty.status = 'dismissed';
         duty.closedAt = t.ctx.now;
