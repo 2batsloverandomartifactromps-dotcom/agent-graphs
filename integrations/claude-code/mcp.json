@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "agent-graphs": {
+      "command": "node",
+      "args": ["/path/to/agent-graphs/packages/cli/bin/agraph.js", "mcp"],
+      "env": {
+        "AGENT_GRAPHS_URL": "http://localhost:4747",
+        "AGENT_GRAPHS_TOKEN": "${AGENT_GRAPHS_TOKEN:-}",
+        "AGENT_GRAPHS_ACTOR": "mechanism=claude-code,provider=anthropic"
+      }
+    }
+  }
+}

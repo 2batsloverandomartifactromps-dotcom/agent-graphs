@@ -12,6 +12,7 @@ import { type Config, loadConfig } from './config';
 import { type AppContext, createContext } from './context';
 import { idempotencyKeys } from './db/schema';
 import { createDb } from './db/sqlite';
+import { mcpHandler } from './mcp';
 import { attemptRoutes } from './routes/attempts';
 import { Api } from './routes/define';
 import { graphRoutes } from './routes/graphs';
@@ -67,6 +68,7 @@ export function createApp(
   lessonRoutes(api, ctx);
   serveWeb(app, ctx.config.webDir);
 
+  app.all('/mcp', mcpHandler(app));
   app.notFound((c) =>
     c.json(
       {

@@ -149,6 +149,16 @@ export class AgentGraphsClient {
   vocab() {
     return this.request<T.Vocab>('GET', '/vocab');
   }
+  tokens() {
+    return this.request<{ items: T.ApiToken[] }>('GET', '/tokens');
+  }
+  /** Create an API token (admin). The secret is in `token` and is shown only once. */
+  createToken(body: { name: string; role: 'admin' | 'agent' | 'viewer' }) {
+    return this.request<T.ApiToken & { token: string }>('POST', '/tokens', { body });
+  }
+  revokeToken(id: string) {
+    return this.request<{ revoked: string }>('DELETE', `/tokens/${enc(id)}`);
+  }
 
   // ─── Graphs ───────────────────────────────────────────────────────────────
   listGraphs(

@@ -1,0 +1,61 @@
+name: mutations under the open policy
+description: >
+  With policy.mutations open, an attached orchestrator may also modify and remove nodes that
+  have not started, but never a started node (POLICY_DENIED). Aims stay protected (admin only).
+spec: |
+  schema: agent-graphs/v1
+  title: Open mutations
+  slug: mutations-open
+  policy: { mutations: open }
+  orchestrators:
+    - { key: lead, name: Lead, role: lead, capabilities: [mutate, resolve] }
+  aims:
+    - { key: all-done, title: All nodes complete, metric: nodes_done_ratio, source: derived, comparator: gte, target: 1 }
+  nodes:
+    - key: build
+      title: Build
+      aim: Built
+      purpose: The work
+      prompt: Build it.
+      aims: [{ check: "build_ok >= 1" }]
+    - key: ship
+      title: Ship
+      aim: Shipped
+      purpose: Users get it
+      needs: [build]
+      prompt: Ship it.
+      aims: ["Release notes published"]
+    - key: legacy-cleanup
+      title: Legacy cleanup
+      aim: Old code removed
+      purpose: Was planned, turned out unnecessary
+      needs: [build]
+      prompt: Remove the legacy module.
+      aims: ["Legacy module removed"]
+agents:
+  workers: [{ profile: reliable-worker, durationMinutes: { min: 10, max: 10 } }]
+  human: false
+script:
+  - at: 1
+    action: mutate
+    as: lead
+    batch: { updateNodes: [{ key: ship, prompt: "Ship it behind a feature flag." }] }
+  - at: 2
+    action: mutate
+    as: lead
+    batch: { removeNodes: [legacy-cleanup] }
+  - at: 3
+    action: mutate
+    as: lead
+    batch: { updateNodes: [{ key: build, prompt: "Build it differently." }] }
+    expectError: POLICY_DENIED
+  - at: 4
+    action: mutate
+    as: lead
+    batch: { updateNodes: [{ key: ship, aims: ["Nothing"] }] }
+    expectError: POLICY_DENIED
+expect:
+  graph: completed
+  nodes: { build: done, ship: done }
+  events:
+    include: [node.removed, node.updated]

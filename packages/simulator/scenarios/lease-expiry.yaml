@@ -1,0 +1,44 @@
+name: lease expiry after a worker crash
+description: >
+  The worker crashes mid-attempt and stops heartbeating. The sweeper expires the lease
+  (counted abandoned), the node returns to ready, and the restarted worker (a new session)
+  claims again and passes. The briefing of the second attempt carries the abandoned feedback.
+spec: |
+  schema: agent-graphs/v1
+  title: Lease expiry
+  slug: lease-expiry
+  policy: { leaseTtl: 10m }
+  aims:
+    - key: done
+      title: All nodes complete
+      metric: nodes_done_ratio
+      source: derived
+      comparator: gte
+      target: 1
+  nodes:
+    - key: migrate
+      title: Run the data migration
+      aim: Data migrated to the new schema
+      purpose: Unblocks the release
+      prompt: Run the migration script and report rows_failed.
+      aims:
+        - check: "rows_failed == 0"
+    - key: verify
+      title: Verify the migration
+      aim: Spot checks pass
+      purpose: Catch silent corruption
+      needs: [migrate]
+      prompt: Run the verification queries.
+      aims:
+        - check: "spot_check_pass_rate >= 1"
+agents:
+  workers: [{ profile: reliable-worker, durationMinutes: { min: 8, max: 8 } }]
+  human: false
+outcomes:
+  migrate: [crash, pass]
+expect:
+  graph: completed
+  nodes: { migrate: done, verify: done }
+  stats: { crashes: 1 }
+  events:
+    include: [attempt.abandoned, graph.completed]

@@ -1,0 +1,25 @@
+name: directives, questions, and acknowledgments
+description: >
+  While implement runs, the human sends node guidance; the worker receives it on its next
+  heartbeat and acknowledges it. The worker also asks a question; the human answers it, which
+  creates an answer directive on the asking attempt that the worker acknowledges too.
+specFile: ../../../examples/graphs/minimal.yaml
+agents:
+  workers: [{ profile: reliable-worker, durationMinutes: { min: 20, max: 20 } }]
+  judges: [{ profile: judge, strictness: 0 }]
+  human: { delayMinutes: 1 }
+outcomes:
+  implement: [question]
+script:
+  - when: { node: implement, status: running }
+    action: directive
+    node: implement
+    kind: guidance
+    title: Respect prefers-color-scheme on first load
+    body: Default to the OS theme until the user picks one.
+expect:
+  graph: completed
+  stats: { directivesAcked: 2, questions: 1 }
+  requests: { question: 1 }
+  events:
+    min: { directive.created: 2, directive.acknowledged: 2 }

@@ -1,42 +1,43 @@
 /**
- * @agent-graphs/simulator: configurable fake workers, reviewers, and human auto-resolvers that
- * drive graphs through the real API, plus seed data and a YAML scenario runner for server tests.
- * Powers `pnpm demo`. Built in milestone M3 (node `simulator` in docs/build-graph.yaml).
+ * @agent-graphs/simulator: configurable fake workers, judges, a lead orchestrator, and a human
+ * approver that drive graphs through the real API; a YAML scenario runner (fake clock) for
+ * server tests; and live demos (`agraph simulate`).
  */
-
-export type SimulatedAgentProfile = {
-  name: string;
-  model: string;
-  thinking: string;
-  provider: string;
-  mechanism: string;
-  /** Probability that an attempt fails its aims (exercises failure-cycles). */
-  failureRate: number;
-};
-
-export const DEFAULT_PROFILES: readonly SimulatedAgentProfile[] = [
-  {
-    name: 'opus-worker',
-    model: 'claude-opus-5-5',
-    thinking: 'high',
-    provider: 'anthropic',
-    mechanism: 'claude-code',
-    failureRate: 0.15,
-  },
-  {
-    name: 'sonnet-worker',
-    model: 'claude-sonnet-5-5',
-    thinking: 'medium',
-    provider: 'anthropic',
-    mechanism: 'claude-agent-sdk',
-    failureRate: 0.25,
-  },
-  {
-    name: 'haiku-worker',
-    model: 'claude-haiku-4-5',
-    thinking: 'low',
-    provider: 'anthropic',
-    mechanism: 'claude-code',
-    failureRate: 0.35,
-  },
-];
+export { type HumanOptions, SimHuman } from './agents/human';
+export { type JudgeOptions, SimJudge } from './agents/judge';
+export { type LeadOptions, SimLead } from './agents/lead';
+export { type ResolutionPolicy, Resolver } from './agents/policy';
+export { SimWorker, type WorkerOptions } from './agents/worker';
+export { checkInvariants } from './invariants';
+export { type LiveOptions, type LiveResult, runLive } from './live';
+export { satisfying, violating } from './metrics';
+export {
+  annotationOf,
+  DEFAULT_PROFILES,
+  profileByName,
+  type SimulatedAgentProfile,
+} from './profiles';
+export { Rng } from './rng';
+export {
+  loadScenario,
+  parseScenario,
+  runScenario,
+  type Scenario,
+  type ScenarioResult,
+  ScenarioSchema,
+} from './scenario';
+export {
+  type SimAgent,
+  type SimulationOptions,
+  type SimulationResult,
+  simulate,
+} from './simulation';
+export {
+  type GateDecision,
+  type Outcome,
+  type Scripts,
+  type SimHost,
+  TERMINAL_GRAPH,
+  type Verdict,
+  World,
+} from './world';

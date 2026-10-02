@@ -35,6 +35,7 @@ Requirements: Node.js ≥ 22.12 and pnpm 10.
 pnpm install
 pnpm dev            # API server on :4747 + web UI on :5173 (proxying /api)
 pnpm check          # lint + typecheck + license gate + tests
+pnpm demo           # fresh server + simulated agents driving examples/graphs/notes-app.yaml
 ```
 
 The CLI runs from source during development:
@@ -42,7 +43,11 @@ The CLI runs from source during development:
 ```bash
 node packages/cli/bin/agraph.js serve     # start the server
 node packages/cli/bin/agraph.js health    # check it is reachable
+node packages/cli/bin/agraph.js --help    # the full command set (docs/agent-protocol.md §7.2)
 ```
+
+To wire a repository for Claude Code (MCP server, hooks, and skill), see
+[integrations/claude-code](integrations/claude-code/README.md).
 
 ## How agents use it
 

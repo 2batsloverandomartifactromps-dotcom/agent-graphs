@@ -315,4 +315,15 @@ export type ValidationOutput = {
   stats?: Record<string, number>;
 };
 
+export type ApiToken = {
+  id: string;
+  name: string;
+  role: 'admin' | 'agent' | 'viewer';
+  prefix: string;
+  createdBy?: Annotation | null;
+  createdAt: string;
+  lastUsedAt?: string | null;
+  revokedAt?: string | null;
+};
+
 export type Vocab = ReturnType<typeof C.vocabPayload> & { overrides: Record<string, unknown> };

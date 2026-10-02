@@ -1,0 +1,33 @@
+name: plan approval before an agent-initiated start
+description: >
+  The policy requires plan approval, so an agent's start opens a plan approval request and the
+  graph stays a draft (pendingApproval) until the human approves it. Then the work runs.
+spec: |
+  schema: agent-graphs/v1
+  title: Plan approval
+  slug: plan-approval
+  policy: { requirePlanApproval: true }
+  aims:
+    - key: all-done
+      title: All nodes complete
+      metric: nodes_done_ratio
+      source: derived
+      comparator: gte
+      target: 1
+  nodes:
+    - key: scaffold
+      title: Scaffold the service
+      aim: A running skeleton
+      purpose: Base for everything else
+      prompt: Scaffold the service with health checks.
+      aims: ["Health endpoint responds"]
+start: agent
+agents:
+  workers: [{ profile: reliable-worker }]
+  human: { delayMinutes: 5 }
+expect:
+  graph: completed
+  nodes: { scaffold: done }
+  requests: { plan: 1 }
+  events:
+    include: [request.created, graph.started, graph.completed]
