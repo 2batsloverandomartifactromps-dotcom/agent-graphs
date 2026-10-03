@@ -421,15 +421,25 @@ function CanvasInner({
       }
     }
     // Keep loop regions around the focus whole, back-edge pill included.
-    for (const l of input.loops) {
-      const region = layout.loops[l.key];
-      const touches = l.body.some((k) => {
-        const r = layout.nodes[k];
-        return r && focus.includes(r);
-      });
-      if (region && touches)
-        focus.push({ ...region, y: region.y - 34, height: region.height + 34 });
-    }
+    const withLoops = (rects: Rect[]) => {
+      const out = [...rects];
+      for (const l of input.loops) {
+        const region = layout.loops[l.key];
+        const touches = l.body.some((k) => {
+          const r = layout.nodes[k];
+          return r && rects.includes(r);
+        });
+        if (region && touches)
+          out.push({ ...region, y: region.y - 34, height: region.height + 34 });
+      }
+      return out;
+    };
+    focus.push(...withLoops(focus).slice(focus.length));
+    // The selection itself and the node to its left (its context), with their loop regions.
+    const neighborhoodRects = (key: string) => {
+      const keys = [key, ...(adj.in.get(key) ?? []).slice(0, 1)];
+      return withLoops(keys.map((k) => layout.nodes[k]).filter((r): r is Rect => Boolean(r)));
+    };
     requestAnimationFrame(() => {
       const el = containerRef.current;
       if (el) {
@@ -437,6 +447,7 @@ function CanvasInner({
           bounds: layout.bounds,
           focus,
           selected: selected ? layout.nodes[selected] : undefined,
+          selectionFocus: selected ? neighborhoodRects(selected) : [],
           width: el.clientWidth,
           height: el.clientHeight,
           pad: {

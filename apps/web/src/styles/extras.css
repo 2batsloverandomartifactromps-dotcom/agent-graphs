@@ -913,10 +913,14 @@
   }
   .steps-track {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 4px;
+    gap: 2px 4px;
     font-size: 11px;
     color: var(--text-3);
+  }
+  .steps-track > * {
+    white-space: nowrap;
   }
   .steps-track .on {
     color: var(--text);

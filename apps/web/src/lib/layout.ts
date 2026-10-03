@@ -432,6 +432,8 @@ export function openingViewport(opts: {
   bounds: Rect;
   focus: Rect[];
   selected?: Rect | undefined;
+  /** Where to anchor instead when the selection falls outside the focus view. */
+  selectionFocus?: Rect[];
   width: number;
   height: number;
   pad: Padding;
@@ -455,9 +457,21 @@ export function openingViewport(opts: {
     };
   }
   const zoom = readingZoom;
-  const anchor = focus.length ? union(focus) : bounds;
-  let x = pad.left - anchor.x * zoom;
-  let y = pad.top - anchor.y * zoom;
+  const at = (rects: Rect[]) => {
+    const anchor = rects.length ? union(rects) : bounds;
+    return { x: pad.left - anchor.x * zoom, y: pad.top - anchor.y * zoom };
+  };
+  let { x, y } = at(focus);
+  if (selected && opts.selectionFocus?.length) {
+    const sx = selected.x * zoom + x;
+    const sy = selected.y * zoom + y;
+    const inside =
+      sx >= pad.left &&
+      sy >= pad.top &&
+      sx + selected.width * zoom <= width - pad.right &&
+      sy + selected.height * zoom <= height - pad.bottom;
+    if (!inside) ({ x, y } = at(opts.selectionFocus));
+  }
   if (selected) {
     // Shift each axis just enough; the left/top edge wins when the node is larger than the view.
     const keepIn = (offset: number, pos: number, size: number, lo: number, hi: number) => {
