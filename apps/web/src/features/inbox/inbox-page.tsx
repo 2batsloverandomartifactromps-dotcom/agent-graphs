@@ -142,8 +142,8 @@ export function InboxPage() {
           ))}
           <span className="vsep" />
           <select
-            className="input"
-            style={{ width: 200, height: 28 }}
+            className="input fsel"
+            style={{ maxWidth: 150 }}
             value={search.graph ?? ''}
             onChange={(e) => setSearch({ graph: e.target.value || undefined })}
             aria-label="Filter by graph"
@@ -156,8 +156,7 @@ export function InboxPage() {
             ))}
           </select>
           <select
-            className="input"
-            style={{ width: 150, height: 28 }}
+            className="input fsel"
             value={search.assignee ?? ''}
             onChange={(e) => setSearch({ assignee: e.target.value || undefined })}
             aria-label="Filter by assignee"

@@ -215,8 +215,8 @@
       linear-gradient(45deg, transparent 50%, var(--text-3) 50%),
       linear-gradient(135deg, var(--text-3) 50%, transparent 50%);
     background-position:
-      calc(100% - 15px) 14px,
-      calc(100% - 10px) 14px;
+      calc(100% - 15px) calc(50% - 1px),
+      calc(100% - 10px) calc(50% - 1px);
     background-size: 5px 5px;
     background-repeat: no-repeat;
   }
@@ -698,6 +698,15 @@
     stroke: var(--accent);
     stroke-width: 8;
     stroke-dasharray: 22 16;
+  }
+  /* Compact filter dropdowns that sit in a chip row (inbox, notes). */
+  select.input.fsel {
+    width: auto;
+    height: 28px;
+    border-radius: 999px;
+    padding: 0 26px 0 11px;
+    font-size: 12px;
+    font-weight: 500;
   }
   .canvas .cv-tools .minimap .react-flow__panel.react-flow__minimap {
     position: absolute;

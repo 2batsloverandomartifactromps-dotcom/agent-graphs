@@ -48,8 +48,8 @@ export function NotesPage() {
   });
   const select = (label: string, key: keyof NotesSearch, options: readonly string[]) => (
     <select
-      className="input"
-      style={{ width: 150, height: 28 }}
+      className="input fsel"
+      style={{ maxWidth: 128 }}
       value={search[key] ?? ''}
       onChange={(e) => set({ [key]: e.target.value || undefined })}
       aria-label={label}
@@ -75,7 +75,7 @@ export function NotesPage() {
           </div>
         </div>
         <div className="filters">
-          <div className="search" style={{ marginLeft: 0, width: 300 }}>
+          <div className="search" style={{ marginLeft: 0, width: 240 }}>
             <Search size={14} />
             <input
               className="grow"
@@ -97,8 +97,8 @@ export function NotesPage() {
           {select('Provider', 'provider', PROVIDERS)}
           {select('Mechanism', 'mechanism', MECHANISMS)}
           <select
-            className="input"
-            style={{ width: 190, height: 28 }}
+            className="input fsel"
+            style={{ maxWidth: 170 }}
             value={search.graph ?? ''}
             onChange={(e) => set({ graph: e.target.value || undefined, node: undefined })}
             aria-label="Graph"
@@ -121,8 +121,7 @@ export function NotesPage() {
             />
           )}
           <select
-            className="input"
-            style={{ width: 120, height: 28 }}
+            className="input fsel"
             value={search.since ?? ''}
             onChange={(e) => set({ since: e.target.value || undefined })}
             aria-label="Time range"

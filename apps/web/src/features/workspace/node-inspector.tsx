@@ -148,15 +148,14 @@ function NodeInspector({
   const loop = n.loop;
   const attemptNo = attemptsInActivation(n);
   const tabs = [
+    // The mockup's tab set fits the 420px drawer; Directives appears once the node has any.
     { id: 'overview' as const, label: 'Overview' },
-    {
-      id: 'aims' as const,
-      label: 'Aims',
-      count: n.aims.filter((a) => !a.implicit).length || undefined,
-    },
-    { id: 'attempts' as const, label: 'Attempts', count: d?.attempts.length || undefined },
+    { id: 'aims' as const, label: 'Aims' },
+    { id: 'attempts' as const, label: 'Attempts' },
     { id: 'notes' as const, label: 'Notes', count: d?.notes.length || undefined },
-    { id: 'directives' as const, label: 'Directives', count: nodeDirectives.length || undefined },
+    ...(nodeDirectives.length || tab === 'directives'
+      ? [{ id: 'directives' as const, label: 'Directives', count: nodeDirectives.length }]
+      : []),
     { id: 'activity' as const, label: 'Activity' },
     { id: 'briefing' as const, label: 'Briefing' },
     { id: 'config' as const, label: 'Config' },

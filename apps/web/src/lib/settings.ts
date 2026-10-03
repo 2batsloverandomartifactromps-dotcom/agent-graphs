@@ -52,7 +52,7 @@ export const useSettings = create<Settings>()(
       theme: 'dark',
       notifications: false,
       sidebarCollapsed: false,
-      inspectorWidth: 460,
+      inspectorWidth: 420,
       set: (patch) => set(patch),
     }),
     {

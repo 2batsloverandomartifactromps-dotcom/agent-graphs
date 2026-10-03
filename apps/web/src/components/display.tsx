@@ -446,8 +446,11 @@ export function SparkBars({
 }) {
   const max = Math.max(...values, 1);
   const n = Math.max(values.length, 1);
+  // At least 12 slots, right-aligned, so a short history keeps the mockup's thin bars.
+  const slots = Math.max(n, 12);
+  const offset = slots - n;
   const gap = 2;
-  const bw = (width - gap * (n - 1)) / n;
+  const bw = (width - gap * (slots - 1)) / slots;
   return (
     <svg
       className="spark-k"
@@ -464,7 +467,7 @@ export function SparkBars({
             <rect
               key={id}
               className={cn('sk-bar', i === n - 1 && 'cur')}
-              x={(i * (bw + gap)).toFixed(1)}
+              x={((i + offset) * (bw + gap)).toFixed(1)}
               y={(height - bh).toFixed(1)}
               width={bw.toFixed(1)}
               height={bh.toFixed(1)}
