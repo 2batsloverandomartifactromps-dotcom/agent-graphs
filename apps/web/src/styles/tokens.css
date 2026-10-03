@@ -1,0 +1,273 @@
+/* ==========================================================================
+   Agent Graphs — design tokens (docs/ui.md §6.6; values from docs/design/ui-mockup.html).
+   Dark is the default theme; light is applied with [data-theme="light"].
+   ========================================================================== */
+@layer base {
+  :root {
+    color-scheme: dark;
+    /* Typography */
+    --font-sans:
+      "Inter Variable", Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+      sans-serif;
+    --font-mono:
+      "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    --fs-10: 10px;
+    --fs-11: 11px;
+    --fs-12: 12px;
+    --fs-13: 13px;
+    --fs-14: 14px;
+    --fs-16: 16px;
+    --fs-18: 18px;
+    --fs-20: 20px;
+    --fs-24: 24px;
+    --fs-28: 28px;
+    /* Spacing (4px grid) */
+    --sp-1: 4px;
+    --sp-2: 8px;
+    --sp-3: 12px;
+    --sp-4: 16px;
+    --sp-5: 20px;
+    --sp-6: 24px;
+    --sp-8: 32px;
+    --sp-10: 40px;
+    /* Radius */
+    --r-xs: 4px;
+    --r-sm: 6px;
+    --r-md: 8px;
+    --r-lg: 10px;
+    --r-xl: 12px;
+    --r-pill: 999px;
+    /* Layout */
+    --rail-w: 56px;
+    --side-w: 224px;
+    --top-h: 48px;
+    --inspector-w: 420px;
+
+    /* Surfaces — dark (near-black, slightly cool) */
+    --bg: #0b0c0f; /* app plane + canvas */
+    --bg-elev: #0e0f13; /* sidebar, top bar */
+    --panel: #111317; /* inspector, header strip */
+    --card: #15171c; /* cards, node cards */
+    --card-2: #1b1e24; /* hover, inputs, chips */
+    --card-3: #23262e; /* pressed, tracks */
+    --line: rgba(255, 255, 255, 0.07);
+    --line-2: rgba(255, 255, 255, 0.11);
+    --line-3: rgba(255, 255, 255, 0.17);
+    --grid-dot: rgba(255, 255, 255, 0.075);
+    --text: #ececef; /* 15.2:1 on card */
+    --text-2: #a6a9b2; /* 7.6:1 */
+    --text-3: #80848e; /* 4.8:1 — muted, still AA */
+    --text-inv: #0b0c0f;
+    --accent: #7c7ff7; /* indigo — selection, primary actions, loops */
+    --accent-strong: #6366f1;
+    --accent-fg: #a5a7ff; /* accent as text (7.3:1) */
+    --accent-bg: rgba(124, 127, 247, 0.14);
+    --accent-line: rgba(124, 127, 247, 0.45);
+    --focus: #8b8eff;
+    --shadow-sm: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 6px 20px -6px rgba(0, 0, 0, 0.6);
+    --shadow-lg: 0 16px 48px -12px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.06);
+    --edge: #3a3e48; /* requires edge */
+    --edge-done: #4a505c;
+    --edge-informs: #5b606c;
+    --scrim: rgba(5, 6, 8, 0.6);
+
+    /* Status — vivid (icon/stripe/segment) · fg (text) · bg (tint) */
+    --s-pending: #8e8e98;
+    --s-pending-fg: #b1b1ba;
+    --s-ready: #38bdf8;
+    --s-ready-fg: #5cc8f9;
+    --s-running: #a78bfa;
+    --s-running-fg: #b9a2fb;
+    --s-evaluating: #fbbf24;
+    --s-evaluating-fg: #fbc84a;
+    --s-needs: #fb923c;
+    --s-needs-fg: #fca15a;
+    --s-blocked: #f87171;
+    --s-blocked-fg: #f98b8b;
+    --s-paused: #8794a8;
+    --s-paused-fg: #a3afc0;
+    --s-done: #34d399;
+    --s-done-fg: #4fdcaa;
+    --s-failed: #fb7185;
+    --s-failed-fg: #fc8a9b;
+    --s-skipped: #6b6b74;
+    --s-skipped-fg: #9d9da6;
+    --s-cancelled: #55555e;
+    --s-cancelled-fg: #94949d;
+    --tint: 13%;
+
+    /* Provider tints for model badges (low-chroma so they never impersonate a status) */
+    --p-anthropic: #d4a27f;
+    --p-openai: #8fbfaa;
+    --p-google: #93a9dc;
+    --p-human: #c3c4cc;
+    --p-neutral: #a3a6ae;
+
+    /* Severity (findings) */
+    --sev-info: #8e8e98;
+    --sev-low: #38bdf8;
+    --sev-medium: #fbbf24;
+    --sev-high: #fb923c;
+    --sev-critical: #f87171;
+
+    /* Categorical (charts only) */
+    --cat-1: #3987e5;
+    --cat-2: #d95926;
+    --cat-3: #199e70;
+    --cat-4: #c98500;
+  }
+
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --bg: #f6f6f8;
+    --bg-elev: #fbfbfc;
+    --panel: #ffffff;
+    --card: #ffffff;
+    --card-2: #f3f4f6;
+    --card-3: #e9eaee;
+    --line: rgba(17, 20, 32, 0.08);
+    --line-2: rgba(17, 20, 32, 0.12);
+    --line-3: rgba(17, 20, 32, 0.2);
+    --grid-dot: rgba(17, 20, 32, 0.13);
+    --text: #17181c; /* 17.7:1 */
+    --text-2: #4f525b; /* 7.8:1 */
+    --text-3: #666a74; /* 5.4:1 */
+    --text-inv: #ffffff;
+    --accent: #5b5cf0;
+    --accent-strong: #4f46e5;
+    --accent-fg: #4f46e5; /* 6.3:1 */
+    --accent-bg: rgba(91, 92, 240, 0.09);
+    --accent-line: rgba(91, 92, 240, 0.4);
+    --focus: #5b5cf0;
+    --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06), 0 0 0 1px rgba(16, 24, 40, 0.02);
+    --shadow-md: 0 1px 2px rgba(16, 24, 40, 0.05), 0 6px 16px -6px rgba(16, 24, 40, 0.12);
+    --shadow-lg: 0 18px 48px -12px rgba(16, 24, 40, 0.22), 0 0 0 1px rgba(16, 24, 40, 0.06);
+    --edge: #c3c6ce;
+    --edge-done: #aeb2bc;
+    --edge-informs: #a3a7b1;
+    --scrim: rgba(240, 241, 245, 0.6);
+
+    --s-pending: #8b8b94;
+    --s-pending-fg: #5d5e66;
+    --s-ready: #0b94d8;
+    --s-ready-fg: #036394;
+    --s-running: #7c3aed;
+    --s-running-fg: #6527d4;
+    --s-evaluating: #d97706;
+    --s-evaluating-fg: #94480a;
+    --s-needs: #ea580c;
+    --s-needs-fg: #b03a0a;
+    --s-blocked: #dc2626;
+    --s-blocked-fg: #b91c1c;
+    --s-paused: #64748b;
+    --s-paused-fg: #4b5868;
+    --s-done: #059669;
+    --s-done-fg: #04704f;
+    --s-failed: #e11d48;
+    --s-failed-fg: #be123c;
+    --s-skipped: #a1a1aa;
+    --s-skipped-fg: #5d5e66;
+    --s-cancelled: #52525b;
+    --s-cancelled-fg: #45454d;
+    --tint: 9%;
+
+    --p-anthropic: #b9774b;
+    --p-openai: #3f8f6e;
+    --p-google: #4f6fbf;
+    --p-human: #8a8c96;
+    --p-neutral: #6f727b;
+
+    --sev-info: #8b8b94;
+    --sev-low: #0b94d8;
+    --sev-medium: #d97706;
+    --sev-high: #ea580c;
+    --sev-critical: #dc2626;
+    --cat-1: #2a78d6;
+    --cat-2: #eb6834;
+    --cat-3: #1baf7a;
+    --cat-4: #eda100;
+  }
+
+  /* Status classes set --c / --c-fg so every component can consume one pair. */
+  .st-pending {
+    --c: var(--s-pending);
+    --c-fg: var(--s-pending-fg);
+  }
+  .st-ready {
+    --c: var(--s-ready);
+    --c-fg: var(--s-ready-fg);
+  }
+  .st-running {
+    --c: var(--s-running);
+    --c-fg: var(--s-running-fg);
+  }
+  .st-evaluating {
+    --c: var(--s-evaluating);
+    --c-fg: var(--s-evaluating-fg);
+  }
+  .st-needs_input {
+    --c: var(--s-needs);
+    --c-fg: var(--s-needs-fg);
+  }
+  .st-blocked {
+    --c: var(--s-blocked);
+    --c-fg: var(--s-blocked-fg);
+  }
+  .st-paused {
+    --c: var(--s-paused);
+    --c-fg: var(--s-paused-fg);
+  }
+  .st-done {
+    --c: var(--s-done);
+    --c-fg: var(--s-done-fg);
+  }
+  .st-failed {
+    --c: var(--s-failed);
+    --c-fg: var(--s-failed-fg);
+  }
+  .st-skipped {
+    --c: var(--s-skipped);
+    --c-fg: var(--s-skipped-fg);
+  }
+  .st-cancelled {
+    --c: var(--s-cancelled);
+    --c-fg: var(--s-cancelled-fg);
+  }
+  /* Aim / attempt / loop / graph statuses map onto the same families */
+  .st-met,
+  .st-passed,
+  .st-satisfied,
+  .st-completed,
+  .st-approved {
+    --c: var(--s-done);
+    --c-fg: var(--s-done-fg);
+  }
+  .st-unmet,
+  .st-exhausted {
+    --c: var(--s-failed);
+    --c-fg: var(--s-failed-fg);
+  }
+  .st-partial,
+  .st-verifying,
+  .st-submitted {
+    --c: var(--s-evaluating);
+    --c-fg: var(--s-evaluating-fg);
+  }
+  .st-waived,
+  .st-superseded,
+  .st-abandoned,
+  .st-idle,
+  .st-draft {
+    --c: var(--s-pending);
+    --c-fg: var(--s-pending-fg);
+  }
+  .st-errored {
+    --c: var(--s-blocked);
+    --c-fg: var(--s-blocked-fg);
+  }
+  .st-active {
+    --c: var(--s-running);
+    --c-fg: var(--s-running-fg);
+  }
+}

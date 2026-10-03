@@ -1,6 +1,25 @@
+/* React Flow's base styles sit in the lowest layer so the design's canvas overrides win. */
+@import "@xyflow/react/dist/base.css" layer(xyflow);
 @import "tailwindcss";
+@import "./styles/tokens.css";
+@import "./styles/app.css";
+@import "./styles/extras.css";
 
-@theme {
-  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace;
+/* Expose the design tokens to Tailwind utilities (bg-card, text-text-2, border-line, …). */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-bg-elev: var(--bg-elev);
+  --color-panel: var(--panel);
+  --color-card: var(--card);
+  --color-card-2: var(--card-2);
+  --color-card-3: var(--card-3);
+  --color-line: var(--line);
+  --color-line-2: var(--line-2);
+  --color-line-3: var(--line-3);
+  --color-text: var(--text);
+  --color-text-2: var(--text-2);
+  --color-text-3: var(--text-3);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-bg: var(--accent-bg);
 }
