@@ -1,0 +1,264 @@
+# A personal website with a data science × AI × math × physics blog, built by agents.
+# Dogfoods Agent Graphs: parallel posts, independent accuracy judges, per-post fix loops,
+# an orchestrator-approved launch gate, and reproducible numbers computed by the site itself.
+schema: agent-graphs/v1
+title: Personal site — DS × AI × math × physics blog
+slug: personal-site
+description: >
+  A fast, beautiful static personal website whose blog posts find non-obvious connections between
+  data science, AI, mathematics, and physics. Every number and figure is computed by scripts in
+  the repo, so a skeptic can re-run them.
+tags: [website, writing, showcase]
+
+context: |
+  Output lives in `showcase/personal-site/` (repository-relative). It is a static site: plain
+  HTML, CSS, and a little JS. No framework, no bundler, no runtime dependencies.
+  - Math renders with KaTeX from cdn.jsdelivr.net (MIT); everything else is local.
+  - Numerical experiments are Node ESM scripts in `showcase/personal-site/lab/*.mjs`. They use a
+    seeded PRNG (no Math.random), use no npm packages, write JSON results and SVG figures to
+    `showcase/personal-site/assets/lab/`, and exit non-zero if a stated claim does not hold.
+  - `node showcase/personal-site/build.mjs` assembles pages from `content/` into `dist/`: it runs
+    every lab script, injects the results, and checks internal links.
+  - The owner's name and links come from `showcase/personal-site/site.config.json` (placeholders).
+
+constraints:
+  - Every quantitative claim in a post is either derived in the text or produced by a lab script whose output the post cites; no invented numbers, citations, or quotes.
+  - Cite primary sources (papers or textbooks) with author, title, and year; never fabricate a reference.
+  - No real person's name, email, or private data in the site; the owner is a placeholder in site.config.json.
+  - Accessible (semantic HTML, WCAG AA contrast, keyboard navigation, alt text for figures, prefers-reduced-motion) and fast (no page over 200 KB excluding fonts and KaTeX).
+
+aims:
+  - key: complete
+    check: "nodes_done_ratio >= 1"
+    source: derived
+    evaluator: orchestrator
+  - key: excellent
+    title: A demanding technical reader would bookmark the site and share at least one post
+    criteria:
+      - Each post has a genuinely non-obvious central insight, not a textbook restatement
+      - Correct mathematics and physics, with honest caveats
+      - Clear, elegant prose and design
+    evaluator: orchestrator
+    evaluatorKey: reviewer
+
+policy:
+  maxAttempts: 3
+  onExhausted: escalate
+  mutations: append
+
+defaults:
+  executor: { provider: anthropic, mechanism: claude-code }
+
+orchestrators:
+  - key: lead
+    name: Lead
+    role: lead
+    aim: Drive the graph to a launched site with every stage evidenced
+    purpose: Dispatches writers and builders, relays their reports, and resolves escalations
+    capabilities: [dispatch, resolve, mutate]
+    executor: { model: claude-opus-5-5, thinking: high }
+  - key: reviewer
+    name: Editor-in-chief
+    role: reviewer
+    aim: Hold every post and the launch to a high bar of accuracy and cleverness
+    purpose: Independent judgment on qualitative aims and the launch gate
+    capabilities: [evaluate, approve]
+    executor: { model: claude-opus-5-5, thinking: max }
+
+nodes:
+  - key: brief
+    title: Editorial brief and topic slate
+    aim: A brief fixing voice, audience, and four post topics, each with a non-obvious central insight
+    purpose: Every downstream node writes against this brief
+    prompt: |
+      Write `showcase/personal-site/content/brief.md`. Cover the audience (technical readers fluent
+      in calculus, linear algebra, and some ML), the voice (precise, playful, no hype), and the
+      visual identity in words. Then give exactly four post topics. Each topic is a bridge between
+      at least two of: data science, AI, mathematics, physics.
+
+      For each topic give:
+      - a title
+      - a one-sentence central insight that a strong reader would NOT already know or would find
+        surprising
+      - the derivation path
+      - the lab experiment that numerically confirms it (what is computed and what is asserted)
+      - 2–4 primary references
+
+      Start from ten candidates and keep the four with the best insight-to-cliché ratio. Avoid
+      overused angles ("transformers are just X", generic "AI and physics" essays). Record the
+      six rejected candidates and why, as a `decision` note.
+    deliverables: [showcase/personal-site/content/brief.md]
+    aims:
+      - key: slate-quality
+        title: Four topics with genuinely non-obvious, correct central insights and feasible experiments
+        evaluator: orchestrator
+        evaluatorKey: reviewer
+    priority: p0
+    executor: { model: claude-opus-5-5, thinking: max }
+
+  - key: design-system
+    title: Visual design system
+    aim: A distinctive, accessible design system as CSS tokens and components
+    purpose: Gives the site a recognizable identity and keeps pages consistent
+    needs: [brief]
+    prompt: |
+      Create `showcase/personal-site/assets/site.css`, a design system built from CSS custom
+      properties:
+      - typography scale (one serif for prose, one mono for code)
+      - colors for dark and light themes that clear WCAG AA
+      - spacing and layout grid
+      - components: header/nav, article layout with a wide measure for figures, footnotes and
+        margin notes, callouts, code blocks, figure captions, tables, post cards, tag pills
+      Honor prefers-color-scheme and prefers-reduced-motion. Make it feel crafted, not
+      template-like: an interesting typographic detail, tasteful accent color, subtle texture.
+      Report `contrast_failures` (count of token pairs below 4.5:1, computed by a small script you
+      write in `lab/contrast.mjs`).
+    deliverables: [showcase/personal-site/assets/site.css, showcase/personal-site/lab/contrast.mjs]
+    aims:
+      - check: "contrast_failures == 0"
+      - key: distinctive
+        title: The design looks crafted and distinctive, not like a default template
+        evaluator: orchestrator
+        evaluatorKey: reviewer
+    executor: { model: claude-opus-5-5, thinking: high }
+
+  - key: site-scaffold
+    title: Site scaffold and build
+    aim: A zero-dependency static build with home, about, blog index, post template, and RSS
+    purpose: Posts drop into a working site
+    needs: [design-system]
+    prompt: |
+      Create `showcase/personal-site/`:
+      - `site.config.json`: name "Your Name", tagline, links placeholders
+      - `content/` page sources: home, about, and blog index
+      - `content/posts/` with a sample post that exercises math, figures, footnotes, and code
+      - `build.mjs`: a Node ESM script with no npm dependencies. It reads content (HTML
+        fragments with a small front-matter block), wraps pages in a shared layout, generates the
+        blog index, tag pages, and `feed.xml` (RSS 2.0), runs every `lab/*.mjs` (failing the build
+        on a non-zero exit), copies assets, and writes `dist/`. It must also check every internal
+        link and anchor.
+      KaTeX loads from cdn.jsdelivr.net with integrity hashes. Report `broken_links` and
+      `build_exit_code`.
+    deliverables: [showcase/personal-site/build.mjs, showcase/personal-site/site.config.json, showcase/personal-site/content/]
+    checklist:
+      - { key: rss, title: feed.xml validates as RSS 2.0, required: true }
+      - { key: links, title: Internal link and anchor check runs in the build, required: true }
+    aims:
+      - check: "broken_links == 0"
+      - check: "build_exit_code == 0"
+    executor: { model: claude-sonnet-5-5, thinking: high }
+
+  - key: post-1
+    title: Post 1
+    aim: The first slate post, publication-ready, with a lab experiment confirming its claims
+    purpose: One of the four flagship posts
+    needs: [brief, site-scaffold]
+    prompt: &post |
+      Write the post assigned to your node number in `content/brief.md` (post-1 → topic 1, and so
+      on). Write it as `showcase/personal-site/content/posts/<slug>.html`.
+      - Structure: hook → intuition → derivation (KaTeX) → experiment → what it does NOT mean
+        (caveats) → further reading.
+      - Length: about 1,800–3,000 words.
+      - The experiment is `showcase/personal-site/lab/<slug>.mjs`. It computes the result with a
+        seeded PRNG, writes JSON plus one or two SVG figures (hand-built SVG: axes, labels, and a
+        caption-ready title), and asserts the post's quantitative claims (exit 1 if any fails).
+      - The post quotes numbers only from that JSON.
+      - Each figure has alt text. References are real and verifiable: author, title, and year.
+      Run the build and report `claims_verified_ratio` (asserted claims that passed ÷ quantitative
+      claims in the post) and `build_exit_code`. Write a `proof` note with the lab command and its
+      output.
+    aims:
+      - check: "claims_verified_ratio >= 1"
+      - check: "build_exit_code == 0"
+      - key: correct
+        title: Mathematically and physically correct, with honest caveats
+        criteria: [Every derivation step is valid, Claims match the lab output, No fabricated references]
+        evaluator: agent
+      - key: clever
+        title: The central insight is non-obvious and the post makes it land
+        evaluator: orchestrator
+        evaluatorKey: reviewer
+    tags: [post]
+    executor: { model: claude-opus-5-5, thinking: max }
+
+  - key: post-2
+    title: Post 2
+    aim: The second slate post, publication-ready, with a lab experiment confirming its claims
+    purpose: One of the four flagship posts
+    needs: [brief, site-scaffold]
+    prompt: *post
+    aims:
+      - check: "claims_verified_ratio >= 1"
+      - check: "build_exit_code == 0"
+      - { key: correct, title: "Mathematically and physically correct, with honest caveats", evaluator: agent }
+      - { key: clever, title: The central insight is non-obvious and the post makes it land, evaluator: orchestrator, evaluatorKey: reviewer }
+    tags: [post]
+    executor: { model: claude-opus-5-5, thinking: max }
+
+  - key: post-3
+    title: Post 3
+    aim: The third slate post, publication-ready, with a lab experiment confirming its claims
+    purpose: One of the four flagship posts
+    needs: [brief, site-scaffold]
+    prompt: *post
+    aims:
+      - check: "claims_verified_ratio >= 1"
+      - check: "build_exit_code == 0"
+      - { key: correct, title: "Mathematically and physically correct, with honest caveats", evaluator: agent }
+      - { key: clever, title: The central insight is non-obvious and the post makes it land, evaluator: orchestrator, evaluatorKey: reviewer }
+    tags: [post]
+    executor: { model: claude-opus-5-5, thinking: max }
+
+  - key: post-4
+    title: Post 4
+    aim: The fourth slate post, publication-ready, with a lab experiment confirming its claims
+    purpose: One of the four flagship posts
+    needs: [brief, site-scaffold]
+    prompt: *post
+    aims:
+      - check: "claims_verified_ratio >= 1"
+      - check: "build_exit_code == 0"
+      - { key: correct, title: "Mathematically and physically correct, with honest caveats", evaluator: agent }
+      - { key: clever, title: The central insight is non-obvious and the post makes it land, evaluator: orchestrator, evaluatorKey: reviewer }
+    tags: [post]
+    executor: { model: claude-opus-5-5, thinking: max }
+
+  - key: integrate
+    title: Integrate, polish, and QA
+    aim: All posts wired into the site, home page curated, and the full build green
+    purpose: Turns parts into a coherent site
+    needs: [post-1, post-2, post-3, post-4]
+    prompt: |
+      Wire all four posts into the home page and blog index, with excerpts, tags, reading time,
+      and dates. Write an About page in the owner's voice, using placeholders from site.config.json.
+      Polish copy and layout consistency across posts.
+
+      Run the full build. Then compute and report these metrics with small scripts:
+      - `broken_links`
+      - `build_exit_code`
+      - `max_page_kb`: the largest HTML page plus local CSS and JS, excluding KaTeX and fonts
+      - `missing_alt`: images and figures without alt text
+    aims:
+      - check: "broken_links == 0"
+      - check: "build_exit_code == 0"
+      - check: "max_page_kb <= 200"
+      - check: "missing_alt == 0"
+    executor: { model: claude-sonnet-5-5, thinking: high }
+
+  - key: launch-review
+    title: Launch review
+    kind: gate
+    aim: The editor-in-chief approves the site for launch
+    purpose: A final independent read of the whole site
+    needs: [integrate]
+    gate:
+      approver: orchestrator
+      approverKey: reviewer
+      instructions: Read every page in dist/. Approve only if it meets the graph aims; otherwise reject with specific fixes.
+
+loops:
+  - key: launch-fixes
+    title: Launch fixes
+    from: launch-review
+    to: integrate
+    maxIterations: 3
