@@ -23,9 +23,10 @@ guidance and pitfalls, lessons, and gated proposals, following *Procedural Graph
   <img src="docs/design/screenshots/graph-canvas.png" alt="Graph workspace: live DAG with a failure-cycle, orchestration lane, and node inspector" width="900">
 </p>
 
-> **Status: M0, planning and foundation.** The design is complete and the monorepo scaffold is
-> verified. Implementation starts with M1, the core engine. See [docs/PLAN.md](docs/PLAN.md).
-> The screenshots come from the [design mockup](docs/design/ui-mockup.html), not the built UI.
+> **Status: MVP built (M1–M4, plus learn mode E1).** Core engine, server (REST, SSE, MCP), SDK,
+> `agraph` CLI, Claude Code hooks, simulator, and web UI are implemented and tested (`pnpm check`).
+> Next: M5 (templates, proposals, search, groups). See [docs/PLAN.md](docs/PLAN.md) and
+> [docs/HANDOFF.md](docs/HANDOFF.md). UI screenshots: `apps/web/e2e/screenshots/`.
 
 ## Quickstart (development)
 

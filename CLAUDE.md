@@ -1,8 +1,9 @@
 # CLAUDE.md: working on Agent Graphs
 
 Agent Graphs is a platform for constructing, running, monitoring, and auditing execution graphs
-for agent-orchestrated software builds. This repository is in **M0 (planning and foundation)**.
-The design is complete, and implementation follows [docs/build-graph.yaml](docs/build-graph.yaml).
+for agent-orchestrated software builds. The MVP (milestones M1–M4, plus learn mode E1) is built.
+Remaining work follows [docs/build-graph.yaml](docs/build-graph.yaml), [docs/PLAN.md](docs/PLAN.md) (M5+), and
+[docs/HANDOFF.md](docs/HANDOFF.md).
 
 ## Read first
 1. [docs/PLAN.md](docs/PLAN.md): goals, decisions, roadmap.

@@ -1,7 +1,7 @@
 # Agent Graphs: plan
 
-> **Status:** M0 (foundation) complete. Docs, design mockup, repo scaffold, CI, and license policy
-> are in place. **Next: M1, the core engine.**
+> **Status:** M0–M4 complete, plus E1 (learn mode). **Next: M5** (templates, proposals E2,
+> search, groups) and the personal-site dogfood run ([HANDOFF.md](HANDOFF.md)).
 
 ## 1. What we're building
 
@@ -141,12 +141,12 @@ Each milestone ends in a **gate**: its acceptance criteria are verified with evi
 screenshots, proof notes). Once M2 lands, the remaining work is tracked **in Agent Graphs
 itself** by importing [`build-graph.yaml`](build-graph.yaml).
 
-### M0: Foundation ✅ (this change)
+### M0: Foundation ✅
 Planning docs, a high-fidelity UI mockup, example specs, the build graph, the monorepo scaffold
 (all packages with placeholders, toolchain verified), license files and checker, CI,
 `CLAUDE.md`, and a cloud-session start hook.
 
-### M1: Core engine (`packages/core`)
+### M1: Core engine (`packages/core`) ✅
 - **Deliverables**: zod schemas (entities, spec, DTOs, annotations, vocab); spec
   parse/normalize/validate (every rule in [spec §8](spec-format.md#8-validation), with paths and
   hints); graph algorithms (topological order, cycle reporting, reachability, loop bodies,
@@ -163,7 +163,7 @@ Planning docs, a high-fidelity UI mockup, example specs, the build graph, the mo
   invariants in concepts §15 pass property tests (≥ 1000 random runs); coverage is ≥ 90%;
   briefing snapshots for the notes-app example stay within budget.
 
-### M2: Server and API (`apps/server`)
+### M2: Server and API (`apps/server`) ✅
 - **Deliverables**: Drizzle schema and migrations; repositories; command services; every
   endpoint in [api.md](api.md) not marked M5; SSE with replay; jobs; auth modes; idempotency;
   error hints; OpenAPI and `/api/docs`; `agraph`-independent seed script.
@@ -172,7 +172,7 @@ Planning docs, a high-fidelity UI mockup, example specs, the build graph, the mo
   approval, mutations under each policy); the OpenAPI document validates; claim p95 is under
   20 ms on a 1000-node graph; the hash chain verifies after the scenario runs.
 
-### M3: Agent interfaces (`packages/sdk`, `cli`, `mcp`, `simulator`, `integrations/claude-code`)
+### M3: Agent interfaces (`packages/sdk`, `cli`, `mcp`, `simulator`, `integrations/claude-code`) ✅
 - **Deliverables**: typed SDK; the `agraph` CLI (serve, mcp, hook, client commands); MCP server
   (stdio and HTTP, profiles, prompts, resources); a simulator with fake agents (configurable
   models and failure rates; `pnpm demo`); Claude Code hooks, skill, and config examples.
@@ -186,7 +186,7 @@ Planning docs, a high-fidelity UI mockup, example specs, the build graph, the mo
   and briefing integration. Done when a simulated failure-cycle produces a lesson that appears,
   with provenance, in the next relevant briefing, and its counters update.
 
-### M4: Web UI MVP (`apps/web`)
+### M4: Web UI MVP (`apps/web`) ✅
 - **Deliverables**: design tokens and components (from the mockup); the shell; Overview; Graphs
   list; the graph workspace (Canvas, Activity, Notes, Agents, Spec, Settings); node and
   orchestrator inspectors (every tab); Inbox; New graph (spec editor with live preview); live
