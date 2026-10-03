@@ -1,3 +1,5 @@
+/* React Flow's base styles sit in the lowest layer so the design's canvas overrides win. */
+@import "@xyflow/react/dist/base.css" layer(xyflow);
 @import "tailwindcss";
 @import "./styles/tokens.css";
 @import "./styles/app.css";

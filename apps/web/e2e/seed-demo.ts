@@ -17,9 +17,10 @@ import {
   submit,
 } from './api.ts';
 
-export async function seedDemo(slug = 'notes-mvp'): Promise<string> {
+export async function seedDemo(slug = 'notes-mvp', title?: string): Promise<string> {
   const path = fileURLToPath(new URL('../../../examples/graphs/notes-app.yaml', import.meta.url));
-  const yaml = readFileSync(path, 'utf8').replace('slug: notes-mvp', `slug: ${slug}`);
+  let yaml = readFileSync(path, 'utf8').replace('slug: notes-mvp', `slug: ${slug}`);
+  if (title) yaml = yaml.replace(/^title: .*$/m, `title: ${title}`);
   await createGraph(yaml, true);
   const g = slug;
   // Orchestrators attach with their own sessions.
@@ -66,6 +67,14 @@ export async function seedDemo(slug = 'notes-mvp'): Promise<string> {
     title: 'Refresh tokens are not rotated',
     body: 'Rotation lands in this attempt.',
   });
+  await call('POST', `/graphs/${g}/requests`, {
+    kind: 'question',
+    title: 'Should deleted notes be soft-deleted (30-day trash)?',
+    body: 'The contract has `DELETE /notes/:id` but no trash routes. Soft delete adds a `deleted_at` column and a purge job.',
+    node: 'implement-api',
+    attempt: api,
+    blocking: false,
+  });
   // notes-editor-ui: running
   const editor = await claim(g, 'notes-editor-ui', actors.ui);
   await heartbeat(editor, { progress: 30, step: 'Building the editor with optimistic updates' });
@@ -102,6 +111,13 @@ export async function seedDemo(slug = 'notes-mvp'): Promise<string> {
     'security-audit blocked: missing staging credentials',
     'Cannot reach the staging database: STAGING_DB_URL is not provisioned for this graph.',
   );
+  // docs: the only attempt failed for good, so the policy escalates to a human.
+  const docs = await claim(g, 'docs', actors.writer);
+  await heartbeat(docs, { progress: 20, step: 'Setting up the docs toolchain' });
+  await call('POST', `/attempts/${docs}/fail`, {
+    reason: 'The docs toolchain is missing in this environment.',
+    retryable: false,
+  });
   return g;
 }
 

@@ -1,6 +1,5 @@
 import '@fontsource-variable/inter';
 import '@fontsource-variable/jetbrains-mono';
-import '@xyflow/react/dist/base.css';
 import './styles.css';
 import { MutationCache, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { RouterProvider } from '@tanstack/react-router';

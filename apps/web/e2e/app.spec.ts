@@ -112,7 +112,6 @@ test('approve a gate from the Inbox', async ({ page }) => {
   await page.goto('/inbox');
   const request = page.locator('[data-subject="gate"]').filter({ hasText: 'Approve: Plan review' });
   await expect(request).toBeVisible();
-  await shot(page, 'inbox');
   await request.getByRole('button', { name: 'Approve' }).click();
   await expect(request).toHaveCount(0);
   await expect.poll(async () => (await node(G, 'plan-review')).status).toBe('done');
@@ -172,12 +171,16 @@ test('edit a node prompt, then see the change directive acknowledged', async ({ 
 
 test('screenshots of key screens', async ({ page }) => {
   // A richer, mockup-like state in a second graph.
-  const demo = await seedDemo('notes-demo');
+  const demo = await seedDemo('notes-demo', 'Notes app — v2 build');
   await page.goto('/');
   await expect(page.getByText('Active graphs').first()).toBeVisible();
   await shot(page, 'overview');
+  await page.goto('/graphs');
+  await expect(page.getByTestId(`graphs-row-${demo}`)).toBeVisible();
+  await shot(page, 'graphs');
   await page.goto(`/graphs/${demo}/nodes/implement-api`);
   await expect(page.getByTestId('node-implement-api')).toBeVisible();
+  await expect(page.getByTestId('node-implement-api')).toBeInViewport();
   await shot(page, 'graph-canvas');
   await page.goto(`/graphs/${demo}/nodes/search-ui?tab=aims`);
   await expect(page.getByTestId('aim-search-p95-ms-200')).toBeVisible();
@@ -185,6 +188,13 @@ test('screenshots of key screens', async ({ page }) => {
   await page.goto(`/graphs/${demo}/activity`);
   await expect(page.getByTestId('audit-status')).toContainText('verified');
   await shot(page, 'graph-activity');
+  await page.goto('/inbox');
+  await expect(page.locator('[data-subject="exhaustion"]').first()).toBeVisible();
+  await shot(page, 'inbox');
+  await page.goto('/notes');
+  await expect(page.getByRole('heading', { name: 'Notes', exact: true })).toBeVisible();
+  await expect(page.getByText('Use argon2id for password hashing').first()).toBeVisible();
+  await shot(page, 'notes');
   await page.goto('/graphs/new');
   await expect(page.getByTestId('validation').getByText('Valid spec')).toBeVisible();
   await shot(page, 'new-graph');
@@ -194,6 +204,9 @@ test('screenshots of key screens', async ({ page }) => {
     localStorage.setItem('agent-graphs.settings', JSON.stringify(raw));
   });
   await page.goto(`/graphs/${demo}/nodes/implement-api`);
-  await expect(page.getByTestId('node-implement-api')).toBeVisible();
+  await expect(page.getByTestId('node-implement-api')).toBeInViewport();
   await shot(page, 'graph-canvas-light');
+  await page.goto('/inbox');
+  await expect(page.locator('[data-subject="exhaustion"]').first()).toBeVisible();
+  await shot(page, 'inbox-light');
 });

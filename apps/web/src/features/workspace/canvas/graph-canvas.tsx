@@ -43,6 +43,7 @@ import {
   lineage,
   neighborInDirection,
   neighbors,
+  openingViewport,
   type Rect,
 } from '../../../lib/layout';
 import { viewToLayoutInput } from '../../../lib/preview';
@@ -241,7 +242,8 @@ function CanvasInner({
         focusable: false,
         className: 'loop-host',
         zIndex: -10 + region.depth,
-        style: { width: region.width, height: region.height },
+        width: region.width,
+        height: region.height,
       });
     }
     for (const n of view.nodes) {
@@ -279,6 +281,8 @@ function CanvasInner({
         draggable: false,
         selectable: false,
         width: r.width,
+        // The minimap and fitView need a height; cards size themselves (no `height` style).
+        initialHeight: r.height,
         ariaLabel: ariaLabel(n),
         zIndex: 1,
       });
@@ -384,43 +388,6 @@ function CanvasInner({
     },
     [rf, fitPadding],
   );
-  useEffect(() => {
-    if (!layout || rfNodes.length === 0 || fittedHash.current === layout.hash) return;
-    fittedHash.current = layout.hash;
-    // Open on the active frontier (live, waiting and ready work plus neighbors) at a legible
-    // zoom, like the design reference; "Fit graph" shows everything.
-    const frontier = new Set<string>();
-    for (const n of view.nodes) {
-      if (['running', 'evaluating', 'needs_input', 'blocked', 'ready'].includes(n.status))
-        for (const k of neighbors(n.key, adj)) frontier.add(k);
-    }
-    const ids = frontier.size >= 2 ? [...frontier].map((id) => ({ id })) : undefined;
-    requestAnimationFrame(() => {
-      void rf.fitView({
-        padding: fitPadding,
-        maxZoom: 1,
-        minZoom: ids ? 0.62 : 0.3,
-        ...(ids ? { nodes: ids } : {}),
-      });
-    });
-  }, [layout, rfNodes.length, rf, view.nodes, adj, fitPadding]);
-
-  // Bring a newly selected node into view (deep links, keyboard, palette).
-  useEffect(() => {
-    if (!selected || !layout?.nodes[selected] || !containerRef.current) return;
-    const r = layout.nodes[selected] as Rect;
-    const vp = rf.getViewport();
-    const el = containerRef.current;
-    const x0 = r.x * vp.zoom + vp.x;
-    const y0 = r.y * vp.zoom + vp.y;
-    const visible =
-      x0 > 0 &&
-      y0 > LANE_H &&
-      x0 + r.width * vp.zoom < el.clientWidth &&
-      y0 + r.height * vp.zoom < el.clientHeight - 60;
-    if (!visible) centerOn(selected, layout, rf, true);
-  }, [selected, layout, rf]);
-
   const onMove = useCallback((_: unknown, vp: Viewport) => {
     const el = containerRef.current;
     if (!el) return;
@@ -428,6 +395,64 @@ function CanvasInner({
     el.style.backgroundSize = `${g}px ${g}px`;
     el.style.backgroundPosition = `${vp.x}px ${vp.y}px`;
   }, []);
+
+  // The first fit for a structure owns the viewport; selection scrolling waits for it.
+  const fitPending = useRef(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: fit once per structure, not per selection
+  useEffect(() => {
+    if (!layout || rfNodes.length === 0 || fittedHash.current === layout.hash) return;
+    fittedHash.current = layout.hash;
+    fitPending.current = true;
+    // Open on the active frontier (live, waiting and ready work plus neighbors) at the design
+    // reference's reading zoom, keeping the selection in view. "Fit graph" shows everything.
+    const focus: Rect[] = [];
+    for (const n of view.nodes) {
+      if (!['running', 'evaluating', 'needs_input', 'blocked', 'ready'].includes(n.status))
+        continue;
+      for (const k of neighbors(n.key, adj)) {
+        const r = layout.nodes[k];
+        if (r) focus.push(r);
+      }
+    }
+    // Keep loop regions around the focus whole, back-edge pill included.
+    for (const l of input.loops) {
+      const region = layout.loops[l.key];
+      const touches = l.body.some((k) => {
+        const r = layout.nodes[k];
+        return r && focus.includes(r);
+      });
+      if (region && touches)
+        focus.push({ ...region, y: region.y - 34, height: region.height + 34 });
+    }
+    requestAnimationFrame(() => {
+      const el = containerRef.current;
+      if (el) {
+        const vp = openingViewport({
+          bounds: layout.bounds,
+          focus,
+          selected: selected ? layout.nodes[selected] : undefined,
+          width: el.clientWidth,
+          height: el.clientHeight,
+          pad: {
+            top: (showLane ? LANE_H : 0) + 46,
+            bottom: 76,
+            left: 24,
+            right: 24,
+          },
+        });
+        void rf.setViewport(vp);
+        onMove(null, vp);
+      }
+      fitPending.current = false;
+    });
+  }, [layout, rfNodes.length, rf, view.nodes, adj, showLane, input.loops]);
+
+  // Bring a newly selected node into view (keyboard, palette, inbox links).
+  useEffect(() => {
+    if (!selected || !layout?.nodes[selected] || !containerRef.current || fitPending.current)
+      return;
+    if (!inView(selected, layout, rf, containerRef.current)) centerOn(selected, layout, rf, true);
+  }, [selected, layout, rf]);
 
   const select = useCallback(
     (key: string | null) => {
@@ -586,6 +611,25 @@ function CanvasInner({
 function isConsecutive(path: string[], a: string, b: string): boolean {
   const i = path.indexOf(a);
   return i >= 0 && path[i + 1] === b;
+}
+
+function inView(
+  key: string,
+  layout: LayoutResult,
+  rf: ReturnType<typeof useReactFlow>,
+  el: HTMLElement,
+): boolean {
+  const r = layout.nodes[key];
+  if (!r) return true;
+  const vp = rf.getViewport();
+  const x0 = r.x * vp.zoom + vp.x;
+  const y0 = r.y * vp.zoom + vp.y;
+  return (
+    x0 > 0 &&
+    y0 > LANE_H &&
+    x0 + r.width * vp.zoom < el.clientWidth &&
+    y0 + r.height * vp.zoom < el.clientHeight - 60
+  );
 }
 
 function centerOn(

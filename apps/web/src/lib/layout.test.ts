@@ -4,11 +4,13 @@ import { validateSpecText } from '@agent-graphs/core';
 import { describe, expect, it } from 'vitest';
 import {
   adjacency,
+  assignRanks,
   computeLayout,
   type LayoutInput,
   lineage,
   loopNesting,
   neighborInDirection,
+  openingViewport,
   type Rect,
   structureHash,
 } from './layout';
@@ -83,6 +85,18 @@ describe('computeLayout', () => {
     expect(structureHash(changed)).not.toBe(result.hash);
   });
 
+  it('puts each node in the earliest column and keeps the main line on the top row', () => {
+    const x = (k: string) => (result.nodes[k] as Rect).x;
+    const y = (k: string) => (result.nodes[k] as Rect).y;
+    // docs and security-audit only need plan-review, so they start right after it.
+    expect(x('docs')).toBe(x('db-schema'));
+    expect(x('security-audit')).toBe(x('db-schema'));
+    expect(y('architecture')).toBe(y('requirements'));
+    expect(y('plan-review')).toBe(y('requirements'));
+    for (const r of Object.values(result.nodes))
+      expect(r.y).toBeGreaterThanOrEqual(y('requirements'));
+  });
+
   it('nests laminar loops', () => {
     const nested = exampleInput('nested-loops.yaml');
     const parents = loopNesting(nested.loops);
@@ -91,6 +105,64 @@ describe('computeLayout', () => {
     const out = computeLayout(nested);
     for (const [child, parent] of withParent)
       expect(contains(out.loops[parent as string] as Rect, out.loops[child] as Rect)).toBe(true);
+  });
+});
+
+describe('assignRanks', () => {
+  it('uses the longest path and pulls sources next to their dependant', () => {
+    const ranks = assignRanks(
+      ['a', 'b', 'c', 'late'],
+      [
+        { from: 'a', to: 'b', informs: false },
+        { from: 'b', to: 'c', informs: false },
+        { from: 'late', to: 'c', informs: false },
+      ],
+    );
+    expect(Object.fromEntries(ranks)).toEqual({ a: 0, b: 1, c: 2, late: 1 });
+  });
+
+  it('survives cycles', () => {
+    const ranks = assignRanks(
+      ['a', 'b'],
+      [
+        { from: 'a', to: 'b', informs: false },
+        { from: 'b', to: 'a', informs: false },
+      ],
+    );
+    expect(ranks.size).toBe(2);
+  });
+});
+
+describe('openingViewport', () => {
+  const pad = { top: 100, right: 20, bottom: 80, left: 20 };
+  it('fits a small graph whole', () => {
+    const vp = openingViewport({
+      bounds: { x: 0, y: 0, width: 600, height: 300 },
+      focus: [],
+      width: 1000,
+      height: 800,
+      pad,
+    });
+    expect(vp.zoom).toBe(1);
+    expect(vp.x).toBe(20 + (960 - 600) / 2);
+  });
+
+  it('opens a large graph at the reading zoom, anchored on the focus, selection in view', () => {
+    const selected = { x: 3000, y: 2000, width: 232, height: 176 };
+    const vp = openingViewport({
+      bounds: { x: 0, y: 0, width: 4000, height: 3000 },
+      focus: [{ x: 500, y: 200, width: 232, height: 176 }],
+      selected,
+      width: 1000,
+      height: 800,
+      pad,
+    });
+    expect(vp.zoom).toBe(0.85);
+    const sx = selected.x * vp.zoom + vp.x;
+    const sy = selected.y * vp.zoom + vp.y;
+    expect(sx).toBeGreaterThanOrEqual(pad.left);
+    expect(sx + selected.width * vp.zoom).toBeLessThanOrEqual(1000 - pad.right + 0.001);
+    expect(sy + selected.height * vp.zoom).toBeLessThanOrEqual(800 - pad.bottom + 0.001);
   });
 });
 

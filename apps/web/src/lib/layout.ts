@@ -1,8 +1,16 @@
 /**
- * Canvas layout (docs/ui.md §5.1): a left-to-right layered dagre layout of the forward
- * `requires` and `informs` DAG. Loop bodies are dagre clusters so they stay contiguous, and are
- * drawn as tinted regions behind their nodes. The result depends only on structure (never on
- * status) and is memoized by a structure hash.
+ * Canvas layout (docs/ui.md §5.1): a left-to-right layered layout of the forward `requires` and
+ * `informs` DAG, on a grid like the design reference.
+ *
+ * - Columns are ranks: each node sits in the earliest column its dependencies allow (sources are
+ *   pulled right next to their first dependant).
+ * - dagre (in the layout worker) orders the nodes within each column to reduce crossings.
+ * - Rows are shared by all columns. Each node takes the free row nearest the median row of its
+ *   dependencies. Every loop reserves a contiguous band of rows across its columns, so its body
+ *   stays together and its tinted region never covers a node outside the body.
+ * - Row and column gutters widen where a loop region (and its back-edge) needs the room.
+ *
+ * The result depends only on structure (never on status) and is memoized by a structure hash.
  */
 import { layout as dagreLayout, Graph } from '@dagrejs/dagre';
 
@@ -39,17 +47,21 @@ export const NODE_H: Record<string, number> = { task: 176, gate: 156, milestone:
 /** Vertical offset of edge ports from a card's top edge (mockup PORT_Y). */
 export const PORT_Y = 46;
 
-const RANK_SEP = 44;
-const NODE_SEP = 36;
+const ROW_H = NODE_H.task as number;
+const COL_GAP = 44;
+const ROW_GAP = 36;
+const MARGIN = 24;
 const LOOP_PAD_X = 18;
 const LOOP_PAD_TOP = 34;
 const LOOP_PAD_BOTTOM = 14;
 const LOOP_NEST = 14;
+/** Room above a loop region for its back-edge and iteration pill. */
+const BACK_EDGE_ROOM = 40;
 
 export function nodeSize(kind: string): { width: number; height: number } {
   return {
     width: kind === 'milestone' ? MILESTONE_W : CARD_W,
-    height: NODE_H[kind] ?? (NODE_H.task as number),
+    height: NODE_H[kind] ?? ROW_H,
   };
 }
 
@@ -103,74 +115,125 @@ export function computeLayout(input: LayoutInput): LayoutResult {
   const hash = structureHash(input);
   const hit = cache.get(hash);
   if (hit) return hit;
-  const result = runLayout(input, hash, true);
+  const result = runLayout(input, hash);
   cache.set(hash, result);
   return result;
 }
 
-function runLayout(input: LayoutInput, hash: string, compound: boolean): LayoutResult {
-  const keys = new Set(input.nodes.map((n) => n.key));
+type ForwardEdge = { from: string; to: string; informs: boolean };
+
+/**
+ * Columns: the longest path from the sources (earliest start), then sources move right next to
+ * their nearest dependant. Edges that would close a cycle are ignored.
+ */
+export function assignRanks(keys: string[], edges: ForwardEdge[]): Map<string, number> {
+  const out = new Map<string, string[]>();
+  const indeg = new Map<string, number>(keys.map((k) => [k, 0]));
+  for (const e of edges) {
+    out.set(e.from, [...(out.get(e.from) ?? []), e.to]);
+    indeg.set(e.to, (indeg.get(e.to) ?? 0) + 1);
+  }
+  const rank = new Map<string, number>(keys.map((k) => [k, 0]));
+  const queue = keys.filter((k) => indeg.get(k) === 0);
+  const seen = new Set<string>();
+  while (queue.length) {
+    const k = queue.shift() as string;
+    seen.add(k);
+    for (const t of out.get(k) ?? []) {
+      rank.set(t, Math.max(rank.get(t) ?? 0, (rank.get(k) ?? 0) + 1));
+      indeg.set(t, (indeg.get(t) ?? 0) - 1);
+      if (indeg.get(t) === 0) queue.push(t);
+    }
+  }
+  // Nodes on a cycle (invalid specs) keep the rank they reached.
+  const hasIn = new Set(edges.map((e) => e.to));
+  for (const k of keys) {
+    if (hasIn.has(k) || !seen.has(k)) continue;
+    const next = (out.get(k) ?? []).map((t) => rank.get(t) ?? 0);
+    if (next.length) rank.set(k, Math.max(0, Math.min(...next) - 1));
+  }
+  return rank;
+}
+
+/** dagre's crossing-reduced order of the nodes within each column. */
+function columnOrder(
+  input: LayoutInput,
+  edges: ForwardEdge[],
+  rank: Map<string, number>,
+): Map<string, number> {
+  const g = new Graph({ multigraph: false });
+  g.setGraph({ rankdir: 'LR', ranksep: COL_GAP, nodesep: ROW_GAP, ranker: 'network-simplex' });
+  g.setDefaultEdgeLabel(() => ({}));
+  for (const n of input.nodes) g.setNode(n.key, nodeSize(n.kind));
+  for (const e of edges) {
+    const minlen = Math.max(1, (rank.get(e.to) ?? 0) - (rank.get(e.from) ?? 0));
+    g.setEdge(e.from, e.to, { weight: e.informs ? 1 : 2, minlen });
+  }
+  const order = new Map<string, number>();
+  try {
+    dagreLayout(g);
+    for (const n of input.nodes) order.set(n.key, (g.node(n.key) as { y?: number })?.y ?? 0);
+  } catch {
+    input.nodes.forEach((n, i) => {
+      order.set(n.key, i);
+    });
+  }
+  return order;
+}
+
+type Band = { loop: string; start: number; height: number; r0: number; r1: number };
+
+function runLayout(input: LayoutInput, hash: string): LayoutResult {
+  const keys = input.nodes.map((n) => n.key);
+  const keySet = new Set(keys);
+  const kindOf = new Map(input.nodes.map((n) => [n.key, n.kind]));
+  const edges: ForwardEdge[] = [];
+  const edgeSeen = new Set<string>();
+  for (const e of input.edges) {
+    if (!keySet.has(e.from) || !keySet.has(e.to) || e.from === e.to) continue;
+    const id = `${e.from}>${e.to}`;
+    if (edgeSeen.has(id)) continue;
+    edgeSeen.add(id);
+    edges.push({ from: e.from, to: e.to, informs: e.kind === 'informs' });
+  }
   const loops = input.loops
-    .map((l) => ({ ...l, body: l.body.filter((k) => keys.has(k)) }))
+    .map((l) => ({ ...l, body: l.body.filter((k) => keySet.has(k)) }))
     .filter((l) => l.body.length > 0);
   const nesting = loopNesting(loops);
   const inner = innermostLoop(loops);
+  const loopByKey = new Map(loops.map((l) => [l.key, l]));
 
-  const g = new Graph({ compound, multigraph: false });
-  g.setGraph({
-    rankdir: 'LR',
-    ranksep: RANK_SEP,
-    nodesep: NODE_SEP,
-    edgesep: 16,
-    marginx: 24,
-    marginy: 24,
-    ranker: 'network-simplex',
-  });
-  g.setDefaultEdgeLabel(() => ({}));
+  const rank = assignRanks(keys, edges);
+  const order = columnOrder(input, edges, rank);
+  const maxRank = Math.max(0, ...rank.values());
 
-  for (const n of input.nodes) g.setNode(n.key, nodeSize(n.kind));
-  if (compound) {
-    for (const l of loops) g.setNode(clusterId(l.key), {});
-    for (const l of loops) {
-      const p = nesting.get(l.key);
-      if (p) g.setParent(clusterId(l.key), clusterId(p));
-    }
-    for (const [key, loop] of inner) if (keys.has(key)) g.setParent(key, clusterId(loop));
+  // Loop rank spans and the rows each loop's band needs (children's bands plus own members).
+  const span = new Map<string, [number, number]>();
+  for (const l of loops) {
+    const rs = l.body.map((k) => rank.get(k) ?? 0);
+    span.set(l.key, [Math.min(...rs), Math.max(...rs)]);
   }
-  for (const e of input.edges) {
-    if (!keys.has(e.from) || !keys.has(e.to) || e.from === e.to) continue;
-    const informs = e.kind === 'informs';
-    // Informs edges shape the layout only weakly, so long context links do not distort it.
-    g.setEdge(e.from, e.to, { weight: informs ? 0 : 2, minlen: 1 });
-  }
-
-  try {
-    dagreLayout(g);
-  } catch (error) {
-    if (compound) return runLayout(input, hash, false);
-    throw error;
-  }
-
-  const nodes: Record<string, Rect> = {};
-  for (const n of input.nodes) {
-    const v = g.node(n.key) as { x: number; y: number; width: number; height: number } | undefined;
-    const { width, height } = nodeSize(n.kind);
-    const cx = v?.x ?? 0;
-    const cy = v?.y ?? 0;
-    // Milestones align their port with the cards' port row.
-    const y = n.kind === 'milestone' ? cy - height / 2 : cy - (NODE_H.task as number) / 2;
-    nodes[n.key] = { x: Math.round(cx - width / 2), y: Math.round(y), width, height };
-  }
-
-  // Regions: bounding boxes of body nodes, padded outward by nesting level.
-  const levels = new Map<string, number>();
-  const levelOf = (key: string): number => {
-    const known = levels.get(key);
+  const children = (key: string | undefined) =>
+    loops.filter((l) => nesting.get(l.key) === key).map((l) => l.key);
+  const bandHeight = new Map<string, number>();
+  const heightOf = (key: string): number => {
+    const known = bandHeight.get(key);
     if (known !== undefined) return known;
-    const children = loops.filter((l) => nesting.get(l.key) === key);
-    const lv = children.length ? Math.max(...children.map((c) => levelOf(c.key) + 1)) : 0;
-    levels.set(key, lv);
-    return lv;
+    const [a, b] = span.get(key) as [number, number];
+    const kids = children(key);
+    let h = 1;
+    for (let r = a; r <= b; r++) {
+      let rows = 0;
+      for (const c of kids) {
+        const [ca, cb] = span.get(c) as [number, number];
+        if (r >= ca && r <= cb) rows += heightOf(c);
+      }
+      for (const k of (loopByKey.get(key) as LayoutLoopInput).body)
+        if (inner.get(k) === key && rank.get(k) === r) rows += 1;
+      h = Math.max(h, rows);
+    }
+    bandHeight.set(key, h);
+    return h;
   };
   const depthOf = (key: string): number => {
     let d = 0;
@@ -181,52 +244,165 @@ function runLayout(input: LayoutInput, hash: string, compound: boolean): LayoutR
     }
     return d;
   };
-  const buildRegions = (): Record<string, LoopRegion> => {
-    const out: Record<string, LoopRegion> = {};
-    for (const l of loops) {
-      const rects = l.body.map((k) => nodes[k]).filter((r): r is Rect => Boolean(r));
-      const level = levelOf(l.key);
-      const x0 = Math.min(...rects.map((r) => r.x)) - LOOP_PAD_X - level * LOOP_NEST;
-      const y0 = Math.min(...rects.map((r) => r.y)) - LOOP_PAD_TOP - level * (LOOP_NEST + 18);
-      const x1 = Math.max(...rects.map((r) => r.x + r.width)) + LOOP_PAD_X + level * LOOP_NEST;
-      const y1 =
-        Math.max(...rects.map((r) => r.y + r.height)) + LOOP_PAD_BOTTOM + level * LOOP_NEST;
-      const parent = nesting.get(l.key);
-      out[l.key] = {
-        key: l.key,
-        x: x0,
-        y: y0,
-        width: x1 - x0,
-        height: y1 - y0,
-        depth: depthOf(l.key),
-        level,
-        ...(parent ? { parent } : {}),
-      };
+
+  // Grid occupancy: cell → node, and cell → innermost reserving loop.
+  const cell = (r: number, row: number) => `${r}:${row}`;
+  const taken = new Set<string>();
+  const owner = new Map<string, string>();
+  const rowOf = new Map<string, number>();
+  const bands = new Map<string, Band>();
+
+  // Rows never go above the first one, so the main line stays on top and branches stack below.
+  const nearest = (want: number, ok: (row: number) => boolean): number => {
+    const w = Math.max(0, want);
+    for (let d = 0; d < 4096; d++) {
+      if (ok(w + d)) return w + d;
+      if (d > 0 && w - d >= 0 && ok(w - d)) return w - d;
     }
-    return out;
+    return w + 4096;
   };
-  // Dagre keeps clusters contiguous per rank, but a rectangular region can still cover a
-  // non-member placed beside a shorter part of the cluster. Push such nodes below the region
-  // (and restack their column) until no region covers a node outside its body.
-  let regions = buildRegions();
-  for (let iter = 0; iter < 8; iter++) {
-    let moved = false;
-    for (const l of loops) {
-      const r = regions[l.key];
-      if (!r) continue;
-      const body = new Set(l.body);
-      // Reserve room above the region for the back-edge and its iteration pill.
-      const zone = { x: r.x - 8, y: r.y - 40, width: r.width + 16, height: r.height + 48 };
-      for (const n of input.nodes) {
-        const rect = nodes[n.key];
-        if (!rect || body.has(n.key) || !intersects(rect, zone)) continue;
-        rect.y = zone.y + zone.height + 12;
-        moved = true;
-      }
+  const median = (xs: number[]): number | undefined => {
+    if (!xs.length) return undefined;
+    const s = [...xs].sort((a, b) => a - b);
+    return s[Math.floor((s.length - 1) / 2)];
+  };
+  const preds = new Map<string, string[]>();
+  for (const e of edges) preds.set(e.to, [...(preds.get(e.to) ?? []), e.from]);
+  const byRank: string[][] = Array.from({ length: maxRank + 1 }, () => []);
+  for (const k of keys) byRank[rank.get(k) ?? 0]?.push(k);
+  for (const col of byRank) col.sort((a, b) => (order.get(a) ?? 0) - (order.get(b) ?? 0));
+
+  const wantRow = (k: string, fallback: number): number => {
+    const m = median((preds.get(k) ?? []).map((p) => rowOf.get(p) ?? 0));
+    return m ?? fallback;
+  };
+
+  for (let r = 0; r <= maxRank; r++) {
+    const col = byRank[r] as string[];
+    // Reserve bands for loops that start in this column, outer loops first.
+    const starting = loops
+      .filter((l) => (span.get(l.key) as [number, number])[0] === r)
+      .sort((a, b) => depthOf(a.key) - depthOf(b.key));
+    for (const l of starting) {
+      const [a, b] = span.get(l.key) as [number, number];
+      const h = heightOf(l.key);
+      const parent = nesting.get(l.key);
+      const members = col.filter((k) => l.body.includes(k));
+      const want = Math.round(
+        (members.reduce((s, k, i) => s + wantRow(k, i), 0) || 0) / Math.max(1, members.length),
+      );
+      const fits = (start: number) => {
+        for (let rr = a; rr <= b; rr++)
+          for (let row = start; row < start + h; row++) {
+            const c = cell(rr, row);
+            if (taken.has(c) || owner.get(c) !== parent) return false;
+          }
+        return true;
+      };
+      let start = nearest(want - Math.floor((h - 1) / 2), fits);
+      if (start >= Math.max(0, want) + 4096) start = nearest(want, (s) => fits(s) || !parent);
+      for (let rr = a; rr <= b; rr++)
+        for (let row = start; row < start + h; row++) owner.set(cell(rr, row), l.key);
+      bands.set(l.key, { loop: l.key, start, height: h, r0: a, r1: b });
     }
-    moved = restackColumns(nodes) || moved;
-    regions = buildRegions();
-    if (!moved) break;
+    // Place this column's nodes, nearest the median row of their dependencies.
+    const wants = col.map((k, i) => ({ k, i, want: wantRow(k, i) }));
+    wants.sort((x, y) => x.want - y.want || x.i - y.i);
+    for (const w of wants) {
+      const home = inner.get(w.k);
+      const ok = (row: number) => !taken.has(cell(r, row)) && owner.get(cell(r, row)) === home;
+      let row = nearest(w.want, ok);
+      if (row >= Math.max(0, w.want) + 4096) row = nearest(w.want, (x) => !taken.has(cell(r, x)));
+      taken.add(cell(r, row));
+      rowOf.set(w.k, row);
+    }
+  }
+
+  // Rows → y, widening the gap above rows where a loop region (and its back-edge) starts, and
+  // below rows where one ends.
+  const used = new Set<number>([...rowOf.values()]);
+  for (const b of bands.values()) for (let i = 0; i < b.height; i++) used.add(b.start + i);
+  const rows = [...used].sort((a, b) => a - b);
+  const topExtra = new Map<number, number>();
+  const bottomExtra = new Map<number, number>();
+  const levels = new Map<string, number>();
+  const levelOf = (key: string): number => {
+    const known = levels.get(key);
+    if (known !== undefined) return known;
+    const kids = children(key);
+    const lv = kids.length ? Math.max(...kids.map((c) => levelOf(c) + 1)) : 0;
+    levels.set(key, lv);
+    return lv;
+  };
+  for (const b of bands.values()) {
+    const lv = levelOf(b.loop);
+    const top = LOOP_PAD_TOP + lv * (LOOP_NEST + 18) + BACK_EDGE_ROOM;
+    topExtra.set(b.start, Math.max(topExtra.get(b.start) ?? 0, top));
+    const end = b.start + b.height - 1;
+    bottomExtra.set(end, Math.max(bottomExtra.get(end) ?? 0, LOOP_PAD_BOTTOM + lv * LOOP_NEST));
+  }
+  const rowY = new Map<number, number>();
+  let y = MARGIN;
+  rows.forEach((row, i) => {
+    if (i > 0) y += ROW_GAP + (bottomExtra.get(rows[i - 1] as number) ?? 0);
+    y += topExtra.get(row) ?? 0;
+    rowY.set(row, y);
+    y += ROW_H;
+  });
+
+  // Columns → x, widening gutters next to nested loop regions.
+  const colX: number[] = [];
+  let x = MARGIN;
+  for (let r = 0; r <= maxRank; r++) {
+    if (r > 0) {
+      // Each side of the gutter can hold a (nested) region edge; keep 12px between them.
+      let left = 0;
+      let right = 0;
+      for (const b of bands.values()) {
+        const pad = LOOP_PAD_X + levelOf(b.loop) * LOOP_NEST;
+        if (b.r1 === r - 1) left = Math.max(left, pad);
+        if (b.r0 === r) right = Math.max(right, pad);
+      }
+      x += Math.max(COL_GAP, left + right + (left && right ? 12 : 0));
+    }
+    colX.push(x);
+    x += CARD_W;
+  }
+
+  const nodes: Record<string, Rect> = {};
+  for (const k of keys) {
+    const kind = kindOf.get(k) ?? 'task';
+    const { width, height } = nodeSize(kind);
+    const r = rank.get(k) ?? 0;
+    const top = rowY.get(rowOf.get(k) ?? 0) ?? MARGIN;
+    nodes[k] = {
+      x: (colX[r] ?? MARGIN) + (CARD_W - width) / 2,
+      y: kind === 'milestone' ? top + PORT_Y - height / 2 : top,
+      width,
+      height,
+    };
+  }
+
+  const regions: Record<string, LoopRegion> = {};
+  for (const l of loops) {
+    const b = bands.get(l.key);
+    if (!b) continue;
+    const lv = levelOf(l.key);
+    const x0 = (colX[b.r0] ?? 0) - LOOP_PAD_X - lv * LOOP_NEST;
+    const x1 = (colX[b.r1] ?? 0) + CARD_W + LOOP_PAD_X + lv * LOOP_NEST;
+    const y0 = (rowY.get(b.start) ?? 0) - LOOP_PAD_TOP - lv * (LOOP_NEST + 18);
+    const y1 = (rowY.get(b.start + b.height - 1) ?? 0) + ROW_H + LOOP_PAD_BOTTOM + lv * LOOP_NEST;
+    const parent = nesting.get(l.key);
+    regions[l.key] = {
+      key: l.key,
+      x: x0,
+      y: y0,
+      width: x1 - x0,
+      height: y1 - y0,
+      depth: depthOf(l.key),
+      level: lv,
+      ...(parent ? { parent } : {}),
+    };
   }
 
   const all = [...Object.values(nodes), ...Object.values(regions)];
@@ -242,35 +418,66 @@ function runLayout(input: LayoutInput, hash: string, compound: boolean): LayoutR
   };
 }
 
-function clusterId(key: string): string {
-  return `loop:${key}`;
+// ─── Opening viewport ─────────────────────────────────────────────────────────
+
+export type Padding = { top: number; right: number; bottom: number; left: number };
+export type ViewportXYZ = { x: number; y: number; zoom: number };
+
+/**
+ * Where the canvas opens: the whole graph when it fits at a legible zoom; otherwise the design
+ * reference's reading zoom anchored at the top-left of the active work (`focus`), shifted just
+ * enough to keep the selected node in view.
+ */
+export function openingViewport(opts: {
+  bounds: Rect;
+  focus: Rect[];
+  selected?: Rect | undefined;
+  width: number;
+  height: number;
+  pad: Padding;
+  readingZoom?: number;
+  minFitZoom?: number;
+  maxZoom?: number;
+}): ViewportXYZ {
+  const { bounds, focus, selected, width, height, pad } = opts;
+  const readingZoom = opts.readingZoom ?? 0.85;
+  const minFit = opts.minFitZoom ?? 0.62;
+  const maxZoom = opts.maxZoom ?? 1;
+  const availW = Math.max(1, width - pad.left - pad.right);
+  const availH = Math.max(1, height - pad.top - pad.bottom);
+  const fit = Math.min(availW / Math.max(1, bounds.width), availH / Math.max(1, bounds.height));
+  if (fit >= minFit) {
+    const zoom = Math.min(fit, maxZoom);
+    return {
+      zoom,
+      x: pad.left + (availW - bounds.width * zoom) / 2 - bounds.x * zoom,
+      y: pad.top + (availH - bounds.height * zoom) / 2 - bounds.y * zoom,
+    };
+  }
+  const zoom = readingZoom;
+  const anchor = focus.length ? union(focus) : bounds;
+  let x = pad.left - anchor.x * zoom;
+  let y = pad.top - anchor.y * zoom;
+  if (selected) {
+    // Shift each axis just enough; the left/top edge wins when the node is larger than the view.
+    const keepIn = (offset: number, pos: number, size: number, lo: number, hi: number) => {
+      const end = (pos + size) * zoom + offset;
+      let out = end > hi ? offset - (end - hi) : offset;
+      if (pos * zoom + out < lo) out = lo - pos * zoom;
+      return out;
+    };
+    x = keepIn(x, selected.x, selected.width, pad.left, width - pad.right);
+    y = keepIn(y, selected.y, selected.height, pad.top, height - pad.bottom);
+  }
+  return { x, y, zoom };
 }
 
-function intersects(a: Rect, b: Rect): boolean {
-  return a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
-}
-
-/** Within each column (same x), push overlapping nodes down so they keep the node gap. */
-function restackColumns(nodes: Record<string, Rect>): boolean {
-  const columns = new Map<number, Rect[]>();
-  for (const r of Object.values(nodes)) {
-    const col = Math.round(r.x / 8);
-    columns.set(col, [...(columns.get(col) ?? []), r]);
-  }
-  let moved = false;
-  for (const col of columns.values()) {
-    col.sort((a, b) => a.y - b.y);
-    for (let i = 1; i < col.length; i++) {
-      const prev = col[i - 1] as Rect;
-      const cur = col[i] as Rect;
-      const min = prev.y + prev.height + NODE_SEP;
-      if (cur.y < min) {
-        cur.y = min;
-        moved = true;
-      }
-    }
-  }
-  return moved;
+function union(rects: Rect[]): Rect {
+  const x0 = Math.min(...rects.map((r) => r.x));
+  const y0 = Math.min(...rects.map((r) => r.y));
+  const x1 = Math.max(...rects.map((r) => r.x + r.width));
+  const y1 = Math.max(...rects.map((r) => r.y + r.height));
+  return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
 }
 
 // ─── Graph traversal helpers for canvas interactions ──────────────────────────

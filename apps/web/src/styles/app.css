@@ -2254,7 +2254,7 @@
   .minimap {
     position: relative;
     width: 196px;
-    background: color-mix(in srgb, var(--card) 94%, transparent);
+    background: var(--card);
     border: 1px solid var(--line-2);
     border-radius: var(--r-md);
     box-shadow: var(--shadow-md);
