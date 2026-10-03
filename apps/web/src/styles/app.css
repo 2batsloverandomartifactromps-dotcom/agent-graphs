@@ -1057,6 +1057,8 @@
     *::after {
       animation-duration: 0.001ms !important;
       animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+      scroll-behavior: auto !important;
     }
   }
 
@@ -1305,6 +1307,19 @@
     cursor: grab;
     background-image: radial-gradient(circle, var(--grid-dot) 1px, transparent 1.3px);
     background-size: 20px 20px;
+    container-type: inline-size;
+    container-name: canvas;
+  }
+  /* Narrow canvases (the New-graph preview, small screens) drop the minimap, then the legend. */
+  @container canvas (max-width: 760px) {
+    .cv-tools .minimap {
+      display: none;
+    }
+  }
+  @container canvas (max-width: 520px) {
+    .cv-tools .cv-legend {
+      display: none;
+    }
   }
   .canvas.panning {
     cursor: grabbing;

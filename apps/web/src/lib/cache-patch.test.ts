@@ -10,6 +10,7 @@ import {
   patchGraphList,
   patchGraphView,
   patchOpenRequests,
+  pulseTarget,
   REFETCH,
   touchedNodeIds,
 } from './cache-patch';
@@ -265,5 +266,34 @@ describe('touchedNodeIds', () => {
     expect(
       touchedNodeIds(v, ev({ entity: { type: 'request', id: 'rq' }, payload: { nodeId: 'nd_2' } })),
     ).toEqual(['nd_2']);
+  });
+});
+
+describe('pulseTarget', () => {
+  it('maps a dispatch to its orchestrator and node', () => {
+    const e = ev({
+      type: 'orchestrator.dispatched',
+      entity: { type: 'attempt', id: 'at_1' },
+      payload: { orchestratorKey: 'lead', nodeKey: 'one' },
+    });
+    expect(pulseTarget(view(), e)).toEqual({ orch: 'lead', nodeKey: 'one' });
+  });
+
+  it('maps an orchestrator evaluation through its session and the attempt', () => {
+    const v = view();
+    v.orchestrators = [
+      { key: 'reviewer', sessionId: 'ss_9' } as GraphView['orchestrators'][number],
+    ];
+    v.nodes[1] = { ...(v.nodes[1] as NodeSummary), currentAttempt: { id: 'at_7' } } as NodeSummary;
+    const e = ev({
+      type: 'aim.evaluated',
+      entity: { type: 'aim', id: 'am_1' },
+      actor: { kind: 'agent', sessionId: 'ss_9' },
+      payload: { attemptId: 'at_7', evaluatorKind: 'orchestrator' },
+    });
+    expect(pulseTarget(v, e)).toEqual({ orch: 'reviewer', nodeKey: 'two' });
+    expect(pulseTarget(v, { ...e, payload: { attemptId: 'at_7', evaluatorKind: 'human' } })).toBe(
+      undefined,
+    );
   });
 });

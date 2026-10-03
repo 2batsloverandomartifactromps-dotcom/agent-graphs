@@ -210,3 +210,42 @@ test('screenshots of key screens', async ({ page }) => {
   await expect(page.locator('[data-subject="exhaustion"]').first()).toBeVisible();
   await shot(page, 'inbox-light');
 });
+
+test('canvas keyboard map, critical path, focus mode and the table view', async ({ page }) => {
+  const g = 'notes-demo';
+  await page.goto(`/graphs/${g}`);
+  const arch = page.locator('.react-flow__node[data-id="architecture"]');
+  await expect(arch).toHaveAttribute('aria-label', /architecture, done/);
+  // Enter opens the focused node; arrows move between neighbors; Esc closes.
+  await arch.focus();
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(new RegExp(`/graphs/${g}/nodes/architecture`));
+  await page.keyboard.press('ArrowRight');
+  await expect(page).toHaveURL(new RegExp(`/graphs/${g}/nodes/plan-review`));
+  await page.keyboard.press('Escape');
+  await expect(page).toHaveURL(new RegExp(`/graphs/${g}(\\?.*)?$`));
+
+  // Critical path: path nodes are marked, the rest dimmed.
+  const cp = page.getByRole('button', { name: 'Critical path' });
+  await cp.click();
+  await expect(cp).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('node-requirements')).toHaveClass(/\bcrit\b/);
+  await expect(page.locator('[data-testid^="node-"].dim').first()).toBeVisible();
+  await cp.click();
+
+  // Focus mode dims everything outside the selection's ancestors and descendants.
+  await page.goto(`/graphs/${g}/nodes/implement-api`);
+  await page.getByRole('button', { name: 'Focus' }).click();
+  await expect(page.getByTestId('node-docs')).toHaveClass(/\bdim\b/);
+  await expect(page.getByTestId('node-db-schema')).not.toHaveClass(/\bdim\b/);
+  await expect(page.getByTestId('node-implement-api')).not.toHaveClass(/\bdim\b/);
+  await page.getByRole('button', { name: 'Focus' }).click();
+
+  // The accessible table alternative lists the same nodes with status text.
+  await page.getByRole('button', { name: 'Table' }).click();
+  const table = page.getByRole('table', { name: 'Nodes' });
+  await expect(table.getByRole('row')).toHaveCount(17);
+  await expect(table.getByRole('row').filter({ hasText: 'security-audit' })).toContainText(
+    'Blocked',
+  );
+});

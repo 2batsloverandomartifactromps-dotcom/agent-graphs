@@ -130,6 +130,7 @@ function Sidebar({ rail }: { rail: boolean }) {
               >
                 <span className={cn('dot', statusMeta(g.status).cls)} aria-hidden="true" />
                 <span className="ellipsis">{g.title}</span>
+                <span className="sr-only">, {statusMeta(g.status).label}</span>
               </Link>
             ))}
           </div>

@@ -9,6 +9,7 @@ import {
   patchGraphList,
   patchGraphView,
   patchOpenRequests,
+  pulseTarget,
   REFETCH,
   touchedNodeIds,
 } from './cache-patch';
@@ -21,9 +22,13 @@ type LiveState = {
   /** Node id → time of last change (for the 600 ms highlight). */
   touched: Record<string, number>;
   lastEventAt?: number;
+  /** Recent orchestrator → node pulses (dispatches and orchestrator evaluations). */
+  pulses: Pulse[];
   setStatus: (s: LiveStatus) => void;
-  push: (e: LiveEvent, touched: string[]) => void;
+  push: (e: LiveEvent, touched: string[], pulse?: Omit<Pulse, 'id' | 'at'>) => void;
 };
+
+export type Pulse = { id: number; graphId: string; orch: string; nodeKey: string; at: number };
 
 const MAX_EVENTS = 300;
 
@@ -31,8 +36,9 @@ export const useLive = create<LiveState>()((set) => ({
   status: 'connecting',
   events: [],
   touched: {},
+  pulses: [],
   setStatus: (status) => set((s) => (s.status === status ? s : { status })),
-  push: (e, ids) =>
+  push: (e, ids, pulse) =>
     set((s) => {
       const now = Date.now();
       const touched = ids.length ? { ...s.touched } : s.touched;
@@ -40,6 +46,7 @@ export const useLive = create<LiveState>()((set) => ({
       return {
         events: [e, ...s.events].slice(0, MAX_EVENTS),
         touched,
+        pulses: pulse ? [...s.pulses.slice(-9), { ...pulse, id: e.seq, at: now }] : s.pulses,
         lastEventAt: now,
         status: 'live',
       };
@@ -90,6 +97,7 @@ export function createLiveHandler(qc: QueryClient, onEvent?: (e: LiveEvent) => v
 
   return (event: LiveEvent) => {
     let touched: string[] = [];
+    let pulse: Omit<Pulse, 'id' | 'at'> | undefined;
     // Graph views (keyed by id or slug).
     for (const [key, view] of qc.getQueriesData<GraphView>({ queryKey: ['graph'] })) {
       if (!view || view.graph.id !== event.graphId) continue;
@@ -100,6 +108,8 @@ export function createLiveHandler(qc: QueryClient, onEvent?: (e: LiveEvent) => v
         scheduleReconcile(key);
       }
       touched = touchedNodeIds(view, event);
+      const target = pulseTarget(view, event);
+      if (target && event.graphId) pulse = { ...target, graphId: event.graphId };
     }
     // Graph lists.
     for (const [key, items] of qc.getQueriesData<GraphSummary[]>({ queryKey: ['graphs'] })) {
@@ -130,7 +140,7 @@ export function createLiveHandler(qc: QueryClient, onEvent?: (e: LiveEvent) => v
     )
       invalidate('spec');
     if (event.entity.type === 'node' || event.type.startsWith('directive.')) invalidate('briefing');
-    useLive.getState().push(event, touched);
+    useLive.getState().push(event, touched, pulse);
     onEvent?.(event);
   };
 }

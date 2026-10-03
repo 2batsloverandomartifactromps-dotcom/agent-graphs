@@ -699,6 +699,44 @@
     stroke-width: 8;
     stroke-dasharray: 22 16;
   }
+  /* Orchestrator → node pulse (dispatch, evaluation). */
+  .dispatch-pulses {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    overflow: visible;
+    z-index: 7;
+  }
+  .dispatch-pulses .dp-path {
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-dasharray: 0.18 1;
+    stroke-dashoffset: 0.18;
+    filter: drop-shadow(0 0 4px color-mix(in srgb, var(--accent) 60%, transparent));
+    animation: dp-travel 0.9s ease-out forwards;
+  }
+  @keyframes dp-travel {
+    0% {
+      stroke-dashoffset: 0.18;
+      opacity: 1;
+    }
+    85% {
+      opacity: 1;
+    }
+    100% {
+      stroke-dashoffset: -1;
+      opacity: 0;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .dispatch-pulses {
+      display: none;
+    }
+  }
   /* Compact filter dropdowns that sit in a chip row (inbox, notes). */
   select.input.fsel {
     width: auto;

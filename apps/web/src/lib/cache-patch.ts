@@ -229,3 +229,27 @@ export function touchedNodeIds(view: GraphView, event: LiveEvent): string[] {
   const nodeId = (event.payload as { nodeId?: string } | undefined)?.nodeId;
   return nodeId ? [nodeId] : [];
 }
+
+/**
+ * Orchestrator → node pulses on the canvas (docs/ui.md §5.1): a dispatch, or an aim evaluated
+ * by an orchestrator, animates from its lane card to the target node.
+ */
+export function pulseTarget(
+  view: GraphView,
+  event: LiveEvent,
+): { orch: string; nodeKey: string } | undefined {
+  if (event.graphId !== view.graph.id) return undefined;
+  const p = (event.payload ?? {}) as Record<string, unknown>;
+  if (event.type === 'orchestrator.dispatched') {
+    const orch = typeof p.orchestratorKey === 'string' ? p.orchestratorKey : undefined;
+    const nodeKey = typeof p.nodeKey === 'string' ? p.nodeKey : undefined;
+    return orch && nodeKey ? { orch, nodeKey } : undefined;
+  }
+  if (event.type === 'aim.evaluated' && p.evaluatorKind === 'orchestrator') {
+    const session = event.actor?.sessionId;
+    const orch = session ? view.orchestrators.find((o) => o.sessionId === session) : undefined;
+    const node = view.nodes.find((n) => n.currentAttempt?.id === p.attemptId);
+    return orch && node ? { orch: orch.key, nodeKey: node.key } : undefined;
+  }
+  return undefined;
+}

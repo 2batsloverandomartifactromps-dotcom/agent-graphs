@@ -48,9 +48,10 @@ import {
 } from '../../../lib/layout';
 import { viewToLayoutInput } from '../../../lib/preview';
 import { ATTENTION_STATUSES } from '../../../lib/status';
-import { cn } from '../../../lib/utils';
+import { cn, motionMs } from '../../../lib/utils';
 import type { CanvasSearch } from '../../../router';
 import { type DepData, DepEdge, EdgeMarkers } from './dep-edge';
+import { DispatchPulses } from './dispatch-pulses';
 import { type LoopData, LoopRegionNode } from './loop-region';
 import {
   ariaLabel,
@@ -384,7 +385,12 @@ function CanvasInner({
   );
   const fitAll = useCallback(
     (duration = 0) => {
-      void rf.fitView({ padding: fitPadding, maxZoom: 1, minZoom: 0.2, duration });
+      void rf.fitView({
+        padding: fitPadding,
+        maxZoom: 1,
+        minZoom: 0.2,
+        duration: motionMs(duration),
+      });
     },
     [rf, fitPadding],
   );
@@ -568,7 +574,7 @@ function CanvasInner({
           onNodeDoubleClick={(_, node) => {
             if (node.type !== 'card') return;
             const ids = [...neighbors(node.id, adj)].map((id) => ({ id }));
-            void rf.fitView({ nodes: ids, duration: 300, padding: 0.25, maxZoom: 1.1 });
+            void rf.fitView({ nodes: ids, duration: motionMs(300), padding: 0.25, maxZoom: 1.1 });
           }}
           onNodeMouseEnter={(_, node) => node.type === 'card' && setHovered(node.id)}
           onNodeMouseLeave={() => setHovered(null)}
@@ -587,6 +593,7 @@ function CanvasInner({
           onFind={() => setFinding(true)}
           hasSelection={Boolean(selected)}
         />
+        {showLane && <DispatchPulses graphId={view.graph.id} containerRef={containerRef} />}
         {finding && (
           <NodeFinder
             nodes={view.nodes}
@@ -643,7 +650,7 @@ function centerOn(
   const zoom = Math.max(rf.getZoom(), 0.7);
   void rf.setCenter(r.x + r.width / 2, r.y + r.height / 2 - 20, {
     zoom,
-    duration: animate ? 300 : 0,
+    duration: animate ? motionMs(300) : 0,
   });
 }
 
@@ -675,7 +682,7 @@ function CanvasToolbar({
           type="button"
           aria-label="Zoom out"
           title="Zoom out"
-          onClick={() => void rf.zoomOut({ duration: 150 })}
+          onClick={() => void rf.zoomOut({ duration: motionMs(150) })}
         >
           <Minus size={14} />
         </button>
@@ -686,7 +693,7 @@ function CanvasToolbar({
           type="button"
           aria-label="Zoom in"
           title="Zoom in"
-          onClick={() => void rf.zoomIn({ duration: 150 })}
+          onClick={() => void rf.zoomIn({ duration: motionMs(150) })}
         >
           <Plus size={14} />
         </button>
